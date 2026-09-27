@@ -82,6 +82,39 @@ describe('typingResolver', () => {
       ).rejects.toThrow('Room not found');
     });
 
+     it('rejects a non-member of a USER room', async () => {
+      const context = mockContext({
+        messageRoom: {
+          findUnique: jest.fn().mockResolvedValue({ messageType: 'USER', userIds: ['other-user'] }),
+        },
+      });
+      await expect(
+        typingResolver.Mutation.updateTyping(
+          null,
+          { typing: { messageRoomId, isTyping: true } },
+          context
+        )
+      ).rejects.toThrow('Not a member of this room');
+    });
+
+    it('succeeds for a non-member in a POST room (typing before first message)', async () => {
+      const upsert = jest.fn().mockResolvedValue({});
+      const context = mockContext({
+        typing: { upsert },
+        messageRoom: {
+          findUnique: jest.fn().mockResolvedValue({ messageType: 'POST', userIds: [] }),
+        },
+      });
+
+      const result = await typingResolver.Mutation.updateTyping(
+        null,
+        { typing: { messageRoomId, isTyping: true } },
+        context
+      );
+
+      expect(result).toEqual({ success: true, messageRoomId, isTyping: true });
+    });
+
     it('upserts typing state with a ten-second expiration and publishes it', async () => {
       const upsert = jest.fn().mockResolvedValue({});
       const context = mockContext({ typing: { upsert } });
@@ -194,19 +227,14 @@ describe('typingResolver', () => {
       });
       expect(result).toEqual(records);
     });
-
-    it('rejects a non-member of a USER room', async () => {
+ it('rejects a non-member of a USER room', async () => {
       const context = mockContext({
         messageRoom: {
           findUnique: jest.fn().mockResolvedValue({ messageType: 'USER', userIds: ['other-user'] }),
         },
       });
       await expect(
-        typingResolver.Mutation.updateTyping(
-          null,
-          { typing: { messageRoomId, isTyping: true } },
-          context
-        )
+        typingResolver.Query.getTypingUsers(null, { messageRoomId }, context)
       ).rejects.toThrow('Not a member of this room');
     });
   });
