@@ -36,7 +36,12 @@ export const typingResolver = {
       args: { messageRoomId: string },
       context: GraphQLContext
     ): Promise<Common.Typing[]> => {
-            try {
+      if (!context.userId) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+      try {
         const room = await loadRoomAccessInput(context, args.messageRoomId);
         assertRoomAccess(room, context.userId);
       } catch (error) {
@@ -72,13 +77,14 @@ export const typingResolver = {
       }
 
       const { messageRoomId, isTyping } = args.typing;
-         const userId = context.userId;
+      const userId = context.userId;
 
       try {
-       const room = await loadRoomAccessInput(context, messageRoomId);
-       assertRoomAccess(room, userId);
+        const room = await loadRoomAccessInput(context, messageRoomId);
+        assertRoomAccess(room, userId);
       } catch (error) {
-       throw toGraphQLError(error);      }
+        throw toGraphQLError(error);
+      }
 
       const now = new Date();
 

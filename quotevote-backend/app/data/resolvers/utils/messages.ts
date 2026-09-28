@@ -1,5 +1,5 @@
 import type { Message, MessageRoom, PrismaClient } from '@prisma/client';
-
+import { canAccessRoom } from '~/data/utils/roomAccess';
 /**
  * Return a room when the caller may read its history.
  * Post-room history is public; direct/user-room history requires membership.
@@ -15,9 +15,7 @@ export const getReadableMessageRoom = async (
   });
 
   if (!room) return null;
-  if (room.messageType === 'POST') return room;
-  if (userId && room.userIds.includes(userId)) return room;
-  return null;
+  return canAccessRoom(room, userId) ? room : null;
 };
 
 /**
