@@ -59,9 +59,8 @@ model UserReport {
   reportedUser User @relation("ReportedUser", fields: [reportedUserId], references: [id])
   reporter     User @relation("Reporter", fields: [reporterId], references: [id])
 
-  @@index([reportedUserId], map: "_reportedUserId_1")
+  @@index([reportedUserId, status], map: "_reportedUserId_1_status_1")
   @@index([reporterId], map: "_reporterId_1")
-  @@index([status])
   @@index([createdAt(sort: Desc)], map: "createdAt_-1")
   @@map("userreports")
 }

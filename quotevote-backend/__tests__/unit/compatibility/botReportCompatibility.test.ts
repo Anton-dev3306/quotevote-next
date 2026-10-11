@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import mongoose from 'mongoose';
 import BotReport from '~/data/models/BotReport';
 import UserReport from '~/data/models/UserReport';
 
@@ -49,6 +50,23 @@ describe('BotReport & UserReport Legacy Compatibility', () => {
       );
       expect(schemaContent).toMatch(/created\s+DateTime\?\s+@default\(now\(\)\)/);
       expect(schemaContent).toMatch(/updatedAt\s+DateTime\?\s+@updatedAt/);
+    });
+
+    it('should preserve exactly the legacy UserReport index set with mapped names', () => {
+      expect(schemaContent).toMatch(
+        /@@index\(\[reportedUserId,\s*status\],\s*map:\s*"_reportedUserId_1_status_1"\)/
+      );
+      expect(schemaContent).toMatch(/@@index\(\[reporterId\],\s*map:\s*"_reporterId_1"\)/);
+      expect(schemaContent).toMatch(
+        /@@index\(\[createdAt\(sort:\s*Desc\)\],\s*map:\s*"createdAt_-1"\)/
+      );
+
+      const userReportModel = schemaContent.substring(
+        schemaContent.indexOf('model UserReport {'),
+        schemaContent.indexOf('}', schemaContent.indexOf('model UserReport {')) + 1
+      );
+      expect(userReportModel).not.toMatch(/@@index\(\[reportedUserId\][,)]/);
+      expect(userReportModel).not.toMatch(/@@index\(\[status\]\)/);
     });
   });
 
@@ -110,6 +128,72 @@ describe('BotReport & UserReport Legacy Compatibility', () => {
       expect(uniqueIndex).toBeDefined();
       expect(uniqueIndex?.[1]?.unique).toBe(true);
       expect(uniqueIndex?.[1]?.name).toBe('_reporterId_1__reportedUserId_1');
+    });
+
+    it('should delete unmapped report when a mapped duplicate report already exists during repair', async () => {
+      const mockUnmappedDoc = {
+        _id: 'doc_unmapped',
+        reporterId: 'rep1',
+        userId: 'user1',
+      };
+      const mockExisting = {
+        _id: 'doc_mapped',
+        _reporterId: 'rep1',
+        _reportedUserId: 'user1',
+      };
+
+      const mockBotReportCollection = {
+        find: jest.fn().mockReturnValue({
+          toArray: jest.fn().mockResolvedValue([mockUnmappedDoc]),
+        }),
+        findOne: jest.fn().mockResolvedValue(mockExisting),
+        deleteOne: jest.fn().mockResolvedValue({ acknowledged: true, deletedCount: 1 }),
+        updateOne: jest.fn(),
+        aggregate: jest.fn().mockReturnValue({
+          toArray: jest.fn().mockResolvedValue([]),
+        }),
+      };
+
+      const mockUserCollection = {
+        find: jest.fn().mockReturnValue({
+          toArray: jest.fn().mockResolvedValue([]),
+        }),
+        updateOne: jest.fn(),
+      };
+
+      const mockDb = {
+        collection: jest.fn((name: string) => {
+          if (name === 'botreports') return mockBotReportCollection;
+          if (name === 'users') return mockUserCollection;
+          return null;
+        }),
+      };
+
+      const originalDb = mongoose.connection.db;
+      Object.defineProperty(mongoose.connection, 'db', {
+        value: mockDb,
+        configurable: true,
+      });
+
+      try {
+        const { repairBotReports } = await import('../../../scripts/repair-bot-reports');
+        const summary = await repairBotReports({ dryRun: false });
+
+        expect(mockBotReportCollection.findOne).toHaveBeenCalledWith({
+          _id: { $ne: 'doc_unmapped' },
+          _reporterId: 'rep1',
+          _reportedUserId: 'user1',
+        });
+        expect(mockBotReportCollection.deleteOne).toHaveBeenCalledWith({ _id: 'doc_unmapped' });
+        expect(mockBotReportCollection.updateOne).not.toHaveBeenCalled();
+        expect(summary.duplicatesRemoved).toBe(1);
+        expect(summary.unmappedFixed).toBe(0);
+      } finally {
+        Object.defineProperty(mongoose.connection, 'db', {
+          value: originalDb,
+          configurable: true,
+        });
+      }
     });
   });
 });

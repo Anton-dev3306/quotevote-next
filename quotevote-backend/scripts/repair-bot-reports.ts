@@ -58,22 +58,38 @@ export async function repairBotReports(options: RepairOptions = {}): Promise<Rep
     const reportedUserId = doc._reportedUserId ?? doc.userId;
 
     if (reporterId && reportedUserId) {
+      // A mapped report for the same pair already exists, so this one is the duplicate
+      const existing = await botReportCollection.findOne({
+        _id: { $ne: doc._id },
+        _reporterId: reporterId,
+        _reportedUserId: reportedUserId,
+      });
+
       if (!dryRun) {
-        await botReportCollection.updateOne(
-          { _id: doc._id },
-          {
-            $set: {
-              _reporterId: reporterId,
-              _reportedUserId: reportedUserId,
-            },
-            $unset: {
-              reporterId: '',
-              userId: '',
-            },
-          }
-        );
+        if (existing) {
+          await botReportCollection.deleteOne({ _id: doc._id });
+        } else {
+          await botReportCollection.updateOne(
+            { _id: doc._id },
+            {
+              $set: {
+                _reporterId: reporterId,
+                _reportedUserId: reportedUserId,
+              },
+              $unset: {
+                reporterId: '',
+                userId: '',
+              },
+            }
+          );
+        }
       }
-      summary.unmappedFixed += 1;
+
+      if (existing) {
+        summary.duplicatesRemoved += 1;
+      } else {
+        summary.unmappedFixed += 1;
+      }
     }
   }
 

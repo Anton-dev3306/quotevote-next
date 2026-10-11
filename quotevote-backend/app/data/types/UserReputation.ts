@@ -95,12 +95,6 @@ export const UserReputationType: GraphQLObjectType<Common.Reputation, GraphQLCon
     }),
   });
 
-type UserReportRecord = Common.UserReport & {
-  _reporterId?: { toString(): string } | string;
-  _reportedUserId?: { toString(): string } | string;
-  createdAt?: Date | string;
-};
-
 export const UserReportType: GraphQLObjectType<Common.UserReport, GraphQLContext> =
   new GraphQLObjectType<Common.UserReport, GraphQLContext>({
     name: 'UserReport',
@@ -108,11 +102,11 @@ export const UserReportType: GraphQLObjectType<Common.UserReport, GraphQLContext
       _id: { type: new GraphQLNonNull(GraphQLString) },
       _reporterId: {
         type: new GraphQLNonNull(GraphQLString),
-        resolve: (r) => (r as UserReportRecord)._reporterId?.toString() ?? r.reporterId,
+        resolve: (r) => (r as Common.UserReportRecord)._reporterId?.toString() ?? r.reporterId,
       },
       _reportedUserId: {
         type: new GraphQLNonNull(GraphQLString),
-        resolve: (r) => (r as UserReportRecord)._reportedUserId?.toString() ?? r.reportedUserId,
+        resolve: (r) => (r as Common.UserReportRecord)._reportedUserId?.toString() ?? r.reportedUserId,
       },
       reason: { type: new GraphQLNonNull(ReportReasonEnum) },
       description: { type: GraphQLString },
@@ -127,14 +121,14 @@ export const UserReportType: GraphQLObjectType<Common.UserReport, GraphQLContext
       reporter: {
         type: UserType,
         resolve: (r) => {
-          const id = (r as UserReportRecord)._reporterId?.toString() ?? r.reporterId;
+          const id = (r as Common.UserReportRecord)._reporterId?.toString() ?? r.reporterId;
           return User.findById(id).lean();
         },
       },
       reportedUser: {
         type: UserType,
         resolve: (r) => {
-          const id = (r as UserReportRecord)._reportedUserId?.toString() ?? r.reportedUserId;
+          const id = (r as Common.UserReportRecord)._reportedUserId?.toString() ?? r.reportedUserId;
           return User.findById(id).lean();
         },
       },
@@ -142,7 +136,7 @@ export const UserReportType: GraphQLObjectType<Common.UserReport, GraphQLContext
       createdAt: {
         type: new GraphQLNonNull(GraphQLString),
         resolve: (r) => {
-          const d = (r as UserReportRecord).createdAt ?? r.created;
+          const d = (r as Common.UserReportRecord).createdAt ?? r.created;
           return d instanceof Date ? d.toISOString() : String(d ?? '');
         },
       },

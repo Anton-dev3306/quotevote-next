@@ -44,6 +44,11 @@ Production MongoDB collections `botreports` and `userreports` store legacy field
      - `@@index([createdAt(sort: Desc)], map: "createdAt_-1")`
    - The redundant index `@@index([reporterId])` is omitted because `_reporterId_1__reportedUserId_1` already covers lookups by reporter.
    - This ensures `prisma db push` preserves the legacy unique index and does not remove duplicate protection.
+   - `UserReport` preserves the exact legacy index set:
+     - `@@index([reportedUserId, status], map: "_reportedUserId_1_status_1")`
+     - `@@index([reporterId], map: "_reporterId_1")`
+     - `@@index([createdAt(sort: Desc)], map: "createdAt_-1")`
+   - This prevents `prisma db push` from dropping the legacy compound index `_reportedUserId_1_status_1`.
 
 ## Model Naming
 
