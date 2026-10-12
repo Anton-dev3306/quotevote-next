@@ -402,6 +402,12 @@ export interface UserReport {
   created: Date | string;
 }
 
+export type UserReportRecord = UserReport & {
+  _reporterId?: { toString(): string } | string;
+  _reportedUserId?: { toString(): string } | string;
+  createdAt?: Date | string;
+};
+
 export interface BotReport {
   _id: string;
   userId: string;
