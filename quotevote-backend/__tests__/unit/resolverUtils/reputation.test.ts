@@ -2,10 +2,7 @@
  * Test suite for reputation resolver utilities.
  */
 
-import User from '~/data/models/User';
-import Post from '~/data/models/Post';
-import Comment from '~/data/models/Comment';
-import Vote from '~/data/models/Vote';
+import type { PrismaClient } from '@prisma/client';
 import {
   calculateUserReputation,
   calculateInviteNetworkScore,
@@ -15,23 +12,6 @@ import {
   recalculateAllReputations,
 } from '~/data/resolvers/utils/reputation';
 
-jest.mock('~/data/models/User', () => ({
-  findById: jest.fn(),
-  find: jest.fn(),
-}));
-
-jest.mock('~/data/models/Post', () => ({
-  find: jest.fn(),
-}));
-
-jest.mock('~/data/models/Comment', () => ({
-  find: jest.fn(),
-}));
-
-jest.mock('~/data/models/Vote', () => ({
-  find: jest.fn(),
-}));
-
 jest.mock('~/data/utils/logger', () => ({
   logger: {
     debug: jest.fn(),
@@ -40,6 +20,39 @@ jest.mock('~/data/utils/logger', () => ({
     error: jest.fn(),
   },
 }));
+
+function mockPrisma() {
+  return {
+    user: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+    },
+    post: {
+      count: jest.fn().mockResolvedValue(0),
+    },
+    comment: {
+      count: jest.fn().mockResolvedValue(0),
+    },
+    vote: {
+      count: jest.fn().mockResolvedValue(0),
+    },
+  } as unknown as Pick<PrismaClient, 'user' | 'post' | 'comment' | 'vote'>;
+}
+
+/** Mock vote.count to return up/down/total based on the where.type filter. */
+function mockVoteCounts(
+  prisma: Pick<PrismaClient, 'vote'>,
+  upvoteCount: number,
+  downvoteCount: number
+): void {
+  (prisma.vote.count as jest.Mock).mockImplementation(
+    ({ where }: { where: { type?: string } }) => {
+      if (where.type === 'up') return Promise.resolve(upvoteCount);
+      if (where.type === 'down') return Promise.resolve(downvoteCount);
+      return Promise.resolve(upvoteCount + downvoteCount);
+    }
+  );
+}
 
 describe('reputation resolver utilities', () => {
   beforeEach(() => {
@@ -55,125 +68,115 @@ describe('reputation resolver utilities', () => {
 
   describe('calculateConductScore', () => {
     it('should return baseline (300) with no votes, posts, or comments', async () => {
-      (Vote.find as jest.Mock).mockResolvedValue([]);
-      (Post.find as jest.Mock).mockResolvedValue([]);
-      (Comment.find as jest.Mock).mockResolvedValue([]);
+      const prisma = mockPrisma();
 
-      const result = await calculateConductScore('user1');
+      const result = await calculateConductScore(prisma, 'user1');
       expect(result).toBe(300);
     });
 
     it('should increase score for more upvotes than downvotes', async () => {
-      (Vote.find as jest.Mock).mockResolvedValue([
-        { type: 'up' },
-        { type: 'up' },
-        { type: 'up' },
-        { type: 'down' },
-      ]);
-      (Post.find as jest.Mock).mockResolvedValue([]);
-      (Comment.find as jest.Mock).mockResolvedValue([]);
+      const prisma = mockPrisma();
+      mockVoteCounts(prisma, 3, 1);
 
-      const result = await calculateConductScore('user1');
+      const result = await calculateConductScore(prisma, 'user1');
       // 300 + min((3-1)*2, 100) = 300 + 4 = 304
       expect(result).toBe(304);
     });
 
     it('should add bonuses for posts and comments', async () => {
-      (Vote.find as jest.Mock).mockResolvedValue([]);
-      (Post.find as jest.Mock).mockResolvedValue(new Array(5).fill({}));
-      (Comment.find as jest.Mock).mockResolvedValue(new Array(10).fill({}));
+      const prisma = mockPrisma();
+      (prisma.post.count as jest.Mock).mockResolvedValue(5);
+      (prisma.comment.count as jest.Mock).mockResolvedValue(10);
 
-      const result = await calculateConductScore('user1');
+      const result = await calculateConductScore(prisma, 'user1');
       // 300 + min(5*5, 50) + min(10*2, 50) = 300 + 25 + 20 = 345
       expect(result).toBe(345);
     });
 
     it('should cap posts and comments bonuses', async () => {
-      (Vote.find as jest.Mock).mockResolvedValue([]);
-      (Post.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
-      (Comment.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
+      const prisma = mockPrisma();
+      (prisma.post.count as jest.Mock).mockResolvedValue(100);
+      (prisma.comment.count as jest.Mock).mockResolvedValue(100);
 
-      const result = await calculateConductScore('user1');
+      const result = await calculateConductScore(prisma, 'user1');
       // 300 + 50 + 50 = 400
       expect(result).toBe(400);
     });
 
     it('should cap total conduct score at 500', async () => {
-      // Create a scenario that would exceed 500
-      (Vote.find as jest.Mock).mockResolvedValue(
-        new Array(100).fill({ type: 'up' })
-      );
-      (Post.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
-      (Comment.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
+      const prisma = mockPrisma();
+      mockVoteCounts(prisma, 100, 0);
+      (prisma.post.count as jest.Mock).mockResolvedValue(100);
+      (prisma.comment.count as jest.Mock).mockResolvedValue(100);
 
-      const result = await calculateConductScore('user1');
+      const result = await calculateConductScore(prisma, 'user1');
       expect(result).toBeLessThanOrEqual(500);
     });
   });
 
   describe('calculateActivityScore', () => {
     it('should return 0 if user is not found', async () => {
-      (User.findById as jest.Mock).mockResolvedValue(null);
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
 
-      const result = await calculateActivityScore('user1');
+      const result = await calculateActivityScore(prisma, 'user1');
       expect(result).toBe(0);
     });
 
     it('should calculate activity from posts, comments, and votes', async () => {
-      (User.findById as jest.Mock).mockResolvedValue({
-        _id: 'user1',
-        joined: new Date().toISOString(),
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user1',
+        joined: new Date(),
       });
-      (Post.find as jest.Mock).mockResolvedValue(new Array(3).fill({}));
-      (Comment.find as jest.Mock).mockResolvedValue(new Array(4).fill({}));
-      (Vote.find as jest.Mock).mockResolvedValue(new Array(5).fill({}));
+      (prisma.post.count as jest.Mock).mockResolvedValue(3);
+      (prisma.comment.count as jest.Mock).mockResolvedValue(4);
+      mockVoteCounts(prisma, 5, 0);
 
-      const result = await calculateActivityScore('user1');
+      const result = await calculateActivityScore(prisma, 'user1');
       // min(3*10, 100) + min(4*5, 50) + min(5*2, 50) + age bonus
       // 30 + 20 + 10 + ~0 = 60 + age
       expect(result).toBeGreaterThanOrEqual(60);
     });
 
     it('should cap score at 200', async () => {
-      (User.findById as jest.Mock).mockResolvedValue({
-        _id: 'user1',
-        joined: new Date('2020-01-01').toISOString(),
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user1',
+        joined: new Date('2020-01-01'),
       });
-      (Post.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
-      (Comment.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
-      (Vote.find as jest.Mock).mockResolvedValue(new Array(100).fill({}));
+      (prisma.post.count as jest.Mock).mockResolvedValue(100);
+      (prisma.comment.count as jest.Mock).mockResolvedValue(100);
+      mockVoteCounts(prisma, 100, 0);
 
-      const result = await calculateActivityScore('user1');
+      const result = await calculateActivityScore(prisma, 'user1');
       expect(result).toBe(200);
     });
 
-    it('should use createdAt if joined is not available', async () => {
-      const createdAt = new Date('2024-01-01');
-      (User.findById as jest.Mock).mockResolvedValue({
-        _id: 'user1',
-        createdAt,
+    it('should include age bonus from joined', async () => {
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user1',
+        joined: new Date('2024-01-01'),
       });
-      (Post.find as jest.Mock).mockResolvedValue([]);
-      (Comment.find as jest.Mock).mockResolvedValue([]);
-      (Vote.find as jest.Mock).mockResolvedValue([]);
 
-      const result = await calculateActivityScore('user1');
-      // Should include age bonus from createdAt
+      const result = await calculateActivityScore(prisma, 'user1');
       expect(result).toBeGreaterThan(0);
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user1' },
+        select: { id: true, joined: true },
+      });
     });
   });
 
   describe('getDetailedMetrics', () => {
     it('should return all metric fields', async () => {
-      (Post.find as jest.Mock).mockResolvedValue([{}, {}]);
-      (Comment.find as jest.Mock).mockResolvedValue([{}]);
-      (Vote.find as jest.Mock).mockResolvedValue([
-        { type: 'up' },
-        { type: 'down' },
-        { type: 'up' },
-      ]);
+      const prisma = mockPrisma();
+      (prisma.post.count as jest.Mock).mockResolvedValue(2);
+      (prisma.comment.count as jest.Mock).mockResolvedValue(1);
+      mockVoteCounts(prisma, 2, 1);
 
-      const result = await getDetailedMetrics('user1');
+      const result = await getDetailedMetrics(prisma, 'user1');
 
       expect(result).toEqual({
         totalInvitesSent: 0,
@@ -192,20 +195,22 @@ describe('reputation resolver utilities', () => {
 
   describe('calculateUserReputation', () => {
     it('should throw if user is not found', async () => {
-      (User.findById as jest.Mock).mockResolvedValue(null);
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
 
-      await expect(calculateUserReputation('nonexistent')).rejects.toThrow(
+      await expect(calculateUserReputation(prisma, 'nonexistent')).rejects.toThrow(
         'User not found'
       );
     });
 
     it('should calculate overall reputation for a valid user', async () => {
-      (User.findById as jest.Mock).mockResolvedValue({ _id: 'user1' });
-      (Vote.find as jest.Mock).mockResolvedValue([]);
-      (Post.find as jest.Mock).mockResolvedValue([]);
-      (Comment.find as jest.Mock).mockResolvedValue([]);
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user1',
+        joined: new Date(),
+      });
 
-      const result = await calculateUserReputation('user1');
+      const result = await calculateUserReputation(prisma, 'user1');
 
       expect(result).toEqual({
         _userId: 'user1',
@@ -224,31 +229,26 @@ describe('reputation resolver utilities', () => {
     });
 
     it('should handle non-Error throw (e.g. string thrown)', async () => {
-      (User.findById as jest.Mock).mockRejectedValue('some string error');
+      const prisma = mockPrisma();
+      (prisma.user.findUnique as jest.Mock).mockRejectedValue('some string error');
 
-      await expect(calculateUserReputation('user1')).rejects.toThrow('some string error');
+      await expect(calculateUserReputation(prisma, 'user1')).rejects.toThrow('some string error');
     });
   });
 
   describe('recalculateAllReputations', () => {
     it('should return results for all users', async () => {
-      (User.find as jest.Mock).mockResolvedValue([
-        { _id: { toString: () => 'u1' } },
-        { _id: { toString: () => 'u2' } },
-      ]);
+      const prisma = mockPrisma();
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([{ id: 'u1' }, { id: 'u2' }]);
 
       // For each calculateUserReputation call:
       // First user succeeds, second fails
-      (User.findById as jest.Mock)
-        .mockResolvedValueOnce({ _id: 'u1' })  // calculateUserReputation('u1') → user check
-        .mockResolvedValueOnce({ _id: 'u1' })  // calculateActivityScore('u1')
-        .mockResolvedValueOnce(null);           // calculateUserReputation('u2') → not found
+      (prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ id: 'u1' }) // calculateUserReputation('u1') → user check
+        .mockResolvedValueOnce({ id: 'u1', joined: new Date() }) // activity
+        .mockResolvedValueOnce(null); // calculateUserReputation('u2') → not found
 
-      (Vote.find as jest.Mock).mockResolvedValue([]);
-      (Post.find as jest.Mock).mockResolvedValue([]);
-      (Comment.find as jest.Mock).mockResolvedValue([]);
-
-      const results = await recalculateAllReputations();
+      const results = await recalculateAllReputations(prisma);
 
       expect(results).toHaveLength(2);
       expect(results[0].userId).toBe('u1');
@@ -258,9 +258,10 @@ describe('reputation resolver utilities', () => {
     });
 
     it('should handle empty user list', async () => {
-      (User.find as jest.Mock).mockResolvedValue([]);
+      const prisma = mockPrisma();
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
 
-      const results = await recalculateAllReputations();
+      const results = await recalculateAllReputations(prisma);
       expect(results).toEqual([]);
     });
   });
