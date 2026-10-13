@@ -35,14 +35,10 @@ const WEIGHTS = {
   ACTIVITY: 0.2,
 } as const;
 
+/** Legacy user docs lack createdAt/updatedAt — do not select those fields. */
 const USER_AGE_SELECT = {
   id: true,
   joined: true,
-  createdAt: true,
-} as const;
-
-const VOTE_TYPE_SELECT = {
-  type: true,
 } as const;
 
 // ============================================================================
@@ -53,19 +49,12 @@ const countVotesByType = async (
   prisma: ReputationPrisma,
   userId: string
 ): Promise<{ upvoteCount: number; downvoteCount: number; totalVotes: number }> => {
-  const votes = await prisma.vote.findMany({
-    where: { userId },
-    select: VOTE_TYPE_SELECT,
-  });
-
-  let upvoteCount = 0;
-  let downvoteCount = 0;
-  for (const vote of votes) {
-    if (vote.type === 'up') upvoteCount += 1;
-    else if (vote.type === 'down') downvoteCount += 1;
-  }
-
-  return { upvoteCount, downvoteCount, totalVotes: votes.length };
+  const [upvoteCount, downvoteCount, totalVotes] = await Promise.all([
+    prisma.vote.count({ where: { userId, type: 'up' } }),
+    prisma.vote.count({ where: { userId, type: 'down' } }),
+    prisma.vote.count({ where: { userId } }),
+  ]);
+  return { upvoteCount, downvoteCount, totalVotes };
 };
 
 const countUserContent = async (
@@ -194,8 +183,8 @@ export const calculateActivityScore = async (
   score += Math.min(commentCount * 5, 50);
   score += Math.min(totalVotes * 2, 50);
 
-  // Account age bonus
-  const joined = user.joined ?? user.createdAt;
+  // Account age bonus (legacy users only have `joined`, not createdAt)
+  const joined = user.joined;
   if (joined) {
     const daysSinceJoined = (Date.now() - new Date(joined).getTime()) / (1000 * 60 * 60 * 24);
     score += Math.min(daysSinceJoined * 0.5, 20);

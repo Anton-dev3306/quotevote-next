@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient, VoteType } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { logger } from '~/data/utils/logger';
 
 // ============================================================================
@@ -23,10 +23,6 @@ interface LeaderboardEntry {
   user: string;
 }
 
-const VOTE_TYPE_SELECT = {
-  type: true,
-} as const;
-
 // ============================================================================
 // Internal Helpers
 // ============================================================================
@@ -46,10 +42,19 @@ const buildWhere = (args: ScoreFilterArgs): Prisma.VoteWhereInput | null => {
   return where;
 };
 
-const votePolarity = (type: VoteType): number => (type === 'up' ? 1 : -1);
-
-const sumVoteScore = (votes: Array<{ type: VoteType }>): number =>
-  votes.reduce((total, vote) => total + votePolarity(vote.type), 0);
+/**
+ * Net score = up votes − down votes, counted in the database.
+ */
+const netVoteScore = async (
+  prisma: ScoresPrisma,
+  where: Prisma.VoteWhereInput
+): Promise<number> => {
+  const [upCount, downCount] = await Promise.all([
+    prisma.vote.count({ where: { ...where, type: 'up' } }),
+    prisma.vote.count({ where: { ...where, type: 'down' } }),
+  ]);
+  return upCount - downCount;
+};
 
 // ============================================================================
 // Score Utilities
@@ -65,11 +70,7 @@ export const scoreUtil = async (
   const where = buildWhere(args);
   if (where === null) return 0;
 
-  const votes = await prisma.vote.findMany({
-    where,
-    select: VOTE_TYPE_SELECT,
-  });
-  return sumVoteScore(votes);
+  return netVoteScore(prisma, where);
 };
 
 /**
@@ -82,14 +83,12 @@ export const voteTypeUtil = async (
   const where = buildWhere(args);
   if (where === null) return 0;
 
-  const votes = await prisma.vote.findMany({
-    where: {
-      ...where,
-      type: args.vote_type ? 'up' : 'down',
-    },
-    select: VOTE_TYPE_SELECT,
+  const type = args.vote_type ? 'up' : 'down';
+  const count = await prisma.vote.count({
+    where: { ...where, type },
   });
-  return sumVoteScore(votes);
+  // Preserve prior polarity: up votes contribute +count, down votes −count
+  return args.vote_type ? count : -count;
 };
 
 /**
@@ -134,12 +133,9 @@ export const topUsers = async (
 
   const entries = await Promise.all(
     users.map(async (user) => {
-      const userVotes = await prisma.vote.findMany({
-        where: { userId: user.id },
-        select: VOTE_TYPE_SELECT,
-      });
+      const score = await netVoteScore(prisma, { userId: user.id });
       return {
-        score: sumVoteScore(userVotes),
+        score,
         userId: user.id,
         user: user.username ?? 'unknown',
       };

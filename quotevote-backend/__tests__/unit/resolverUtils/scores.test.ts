@@ -23,13 +23,27 @@ jest.mock('~/data/utils/logger', () => ({
 function mockPrisma() {
   return {
     vote: {
-      findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
     },
     user: {
       findMany: jest.fn().mockResolvedValue([]),
     },
   } as unknown as Pick<PrismaClient, 'vote' | 'user'>;
+}
+
+/** Mock vote.count to return up/down counts based on where.type. */
+function mockVoteCounts(
+  prisma: Pick<PrismaClient, 'vote'>,
+  upvoteCount: number,
+  downvoteCount: number
+): void {
+  (prisma.vote.count as jest.Mock).mockImplementation(
+    ({ where }: { where: { type?: string } }) => {
+      if (where.type === 'up') return Promise.resolve(upvoteCount);
+      if (where.type === 'down') return Promise.resolve(downvoteCount);
+      return Promise.resolve(0);
+    }
+  );
 }
 
 describe('scores resolver utilities', () => {
@@ -40,17 +54,15 @@ describe('scores resolver utilities', () => {
   describe('scoreUtil', () => {
     it('should calculate net score from mixed votes', async () => {
       const prisma = mockPrisma();
-      (prisma.vote.findMany as jest.Mock).mockResolvedValue([
-        { type: 'up' },
-        { type: 'up' },
-        { type: 'down' },
-      ]);
+      mockVoteCounts(prisma, 2, 1);
 
       const result = await scoreUtil(prisma, { user_id: 'user1' });
-      expect(result).toBe(1); // 2 ups (+2) - 1 down (-1) = 1
-      expect(prisma.vote.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user1' },
-        select: { type: true },
+      expect(result).toBe(1); // 2 ups - 1 down = 1
+      expect(prisma.vote.count).toHaveBeenCalledWith({
+        where: { userId: 'user1', type: 'up' },
+      });
+      expect(prisma.vote.count).toHaveBeenCalledWith({
+        where: { userId: 'user1', type: 'down' },
       });
     });
 
@@ -66,32 +78,30 @@ describe('scores resolver utilities', () => {
 
       const result = await scoreUtil(prisma, { song_id: 'song1', artist_id: 'artist1' });
       expect(result).toBe(0);
-      expect(prisma.vote.findMany).not.toHaveBeenCalled();
+      expect(prisma.vote.count).not.toHaveBeenCalled();
     });
   });
 
   describe('voteTypeUtil', () => {
     it('should filter by upvotes when vote_type is true', async () => {
       const prisma = mockPrisma();
-      (prisma.vote.findMany as jest.Mock).mockResolvedValue([{ type: 'up' }, { type: 'up' }]);
+      (prisma.vote.count as jest.Mock).mockResolvedValue(2);
 
       const result = await voteTypeUtil(prisma, { vote_type: true });
       expect(result).toBe(2);
-      expect(prisma.vote.findMany).toHaveBeenCalledWith({
+      expect(prisma.vote.count).toHaveBeenCalledWith({
         where: { type: 'up' },
-        select: { type: true },
       });
     });
 
     it('should filter by downvotes when vote_type is false', async () => {
       const prisma = mockPrisma();
-      (prisma.vote.findMany as jest.Mock).mockResolvedValue([{ type: 'down' }]);
+      (prisma.vote.count as jest.Mock).mockResolvedValue(1);
 
       const result = await voteTypeUtil(prisma, { vote_type: false });
       expect(result).toBe(-1);
-      expect(prisma.vote.findMany).toHaveBeenCalledWith({
+      expect(prisma.vote.count).toHaveBeenCalledWith({
         where: { type: 'down' },
-        select: { type: true },
       });
     });
   });
@@ -146,10 +156,19 @@ describe('scores resolver utilities', () => {
         { id: 'u3', username: 'charlie' },
       ]);
 
-      (prisma.vote.findMany as jest.Mock)
-        .mockResolvedValueOnce([{ type: 'up' }, { type: 'up' }]) // u1: +2
-        .mockResolvedValueOnce([{ type: 'down' }]) // u2: -1
-        .mockResolvedValueOnce([{ type: 'up' }, { type: 'up' }, { type: 'up' }]); // u3: +3
+      (prisma.vote.count as jest.Mock).mockImplementation(
+        ({ where }: { where: { userId?: string; type?: string } }) => {
+          const scores: Record<string, { up: number; down: number }> = {
+            u1: { up: 2, down: 0 },
+            u2: { up: 0, down: 1 },
+            u3: { up: 3, down: 0 },
+          };
+          const userScores = scores[where.userId ?? ''] ?? { up: 0, down: 0 };
+          if (where.type === 'up') return Promise.resolve(userScores.up);
+          if (where.type === 'down') return Promise.resolve(userScores.down);
+          return Promise.resolve(0);
+        }
+      );
 
       const result = await topUsers(prisma, 2);
 
@@ -161,7 +180,6 @@ describe('scores resolver utilities', () => {
     it('should show "unknown" for users without a username', async () => {
       const prisma = mockPrisma();
       (prisma.user.findMany as jest.Mock).mockResolvedValue([{ id: 'u1', username: null }]);
-      (prisma.vote.findMany as jest.Mock).mockResolvedValue([]);
 
       const result = await topUsers(prisma, 10);
       expect(result[0].user).toBe('unknown');
