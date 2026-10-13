@@ -14,6 +14,8 @@ import {
   Ban,
   Trash2,
   Hash,
+  MoreHorizontal,
+  MessageCircle,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -448,7 +450,7 @@ export default function Post({
             </span>
           ) : null}
           {citationHref && citationDomain ? (
-           <a
+          <a
           href={citationHref}
           target="_blank"
           rel="noopener noreferrer"
@@ -559,8 +561,8 @@ export default function Post({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={handleCopy}>
-                                    <DropdownMenuItem onClick={handleCopy}>
-                      <Link2 className="size-4 mr-2" /> Copy link
+                        <DropdownMenuItem onClick={handleCopy}>
+                       <Link2 className="size-4 mr-2" /> Copy link
                     </DropdownMenuItem>
               </DropdownMenuItem>
               <DropdownMenuItem

@@ -393,7 +393,7 @@ function PostCardComponent({
                 #{groupData.group.title}
               </span>
             )}
-                          {citationUrl && (
+                        {citationUrl && (
               <a
                 href={citationUrl}
                 target="_blank"
