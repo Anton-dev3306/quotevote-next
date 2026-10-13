@@ -79,7 +79,7 @@ const socialLinks = [
 
 const baseStats = [
   { value: '100%', label: 'Open Source', icon: Globe },
-  { value: '0', label: 'Ads or trackers', icon: ShieldOff },
+  { value: '0', label: 'Ads', icon: ShieldOff },
   { value: '∞', label: 'Community-driven', icon: Users },
 ] as const;
 
@@ -351,7 +351,7 @@ export function LandingPageContent({
           </div>
 
           <div className="flex items-center justify-center mt-6 gap-0">
-            {(['Open Source', 'Ad-Free', 'Community-Driven', 'No Tracking'] as const).map(
+            {(['Open Source', 'Ad-Free', 'Community-Driven'] as const).map(
               (label, i, arr) => (
                 <React.Fragment key={label}>
                   <span
@@ -737,7 +737,7 @@ export function LandingPageContent({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 sm:flex-col sm:justify-end sm:self-end">
-                {['No ads', 'No tracking', 'No algorithms', 'Open source'].map((tag) => (
+                {['No ads', 'No algorithms', 'Open source'].map((tag) => (
                   <span
                     key={tag}
                     className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
@@ -1338,12 +1338,11 @@ export function LandingPageContent({
             </div>
 
             {/* Right — impact cards */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { icon: Heart, value: totalRaised, label: 'Total Raised', color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
                 { icon: Users, value: '∞', label: 'Community Members', color: '#2ecc71', bg: '#f0fdf4', border: '#bbf7d0' },
                 { icon: Globe, value: '100%', label: 'Open Source', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
-                { icon: ShieldOff, value: '0', label: 'Ads or Trackers', color: '#2ecc71', bg: '#f0fdf4', border: '#bbf7d0' },
               ].map(({ icon: Icon, value, label, color, bg, border }) => (
                 <div
                   key={label}
