@@ -283,7 +283,7 @@ The probe was temporary and was removed after collecting results, so that this a
 
 ## Resolution — #554 (2026-10-06)
 
-The blocking gate was cleared: `addStripeCustomer` in `QuoteVote/quotevote-monorepo` appears only under `server/` (5 hits, including a real legacy resolver at `server/app/data/resolvers/mutations/stripe/addStripeCustomer.js`); a code search scoped to `path:frontend` returns 0 hits. No retained legacy frontend caller exists, so the full deletion proposed above was executed on branch `chore/554-retire-stripe-surface`.
+The blocking gate was cleared: `addStripeCustomer` in `QuoteVote/quotevote-monorepo` appears only under `server/` (5 hits, including a real legacy resolver at `server/app/data/resolvers/mutations/stripe/addStripeCustomer.js`); a search of the legacy frontend under `client/` returns 0 hits. No retained legacy frontend caller exists, so the full deletion proposed above was executed on branch `chore/554-retire-stripe-surface`.
 
 Executed deletions: the `addStripeCustomer` SDL field, `StripeCustomerInput` + `CardPaymentMethodInput` GraphQL input types, all four files under `app/data/resolvers/utils/stripe/`, the `resolvers/utils/index.ts` barrel re-exports, the `PUBLIC_QUERIES` entry, the `stripe` dependency, the `jest.config.ts` coverage exclusion, `__tests__/unit/resolverUtils/stripe.test.ts`, the Stripe cases in `requireAuth.test.ts` and `inputs.test.ts`, the orphan `test-validation.ts` script, and the three corresponding blocks in `quotevote-frontend/schema.graphql`.
 
