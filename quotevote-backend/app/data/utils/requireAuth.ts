@@ -6,13 +6,14 @@
 import type { Request, Response } from 'express';
 import type { GraphQLContext } from '~/types/graphql';
 import type { AuthenticatedRequest, NextFunction } from '~/types/express';
-import { parse, visit, Kind, type SelectionNode } from 'graphql';
+import { parse, Kind, type SelectionNode, type FragmentDefinitionNode } from 'graphql';
 import { logger } from './logger';
 
 /**
  * List of public GraphQL queries/mutations that don't require authentication
  */
 const PUBLIC_QUERIES: readonly string[] = [
+  'addStripeCustomer',
   'requestUserAccess',
   'checkDuplicateEmail',
   'sendInvestorMail',
@@ -31,34 +32,47 @@ const PUBLIC_QUERIES: readonly string[] = [
   'getUserFollowInfo',
   'tag',
   'tags',
+  'searchUser',
 ] as const;
 
 /**
  * Extracts root field names from a parsed GraphQL document.
- * Handles aliases, fragment spreads, inline fragments, and multiple operations.
+ * Handles aliases, named fragment spreads (with cycle guard), inline fragments,
+ * and multiple operations.
  */
 function extractRootFieldNames(doc: ReturnType<typeof parse>): string[] {
-  const fieldNames: string[] = [];
+  const fragments = new Map<string, FragmentDefinitionNode>();
+  for (const def of doc.definitions) {
+    if (def.kind === Kind.FRAGMENT_DEFINITION) fragments.set(def.name.value, def);
+  }
 
-  visit(doc, {
-    OperationDefinition(node) {
-      for (const selection of node.selectionSet.selections) {
-        collectFieldNames(selection, fieldNames);
-      }
-    },
-  });
+  const fieldNames: string[] = [];
+  for (const def of doc.definitions) {
+    if (def.kind === Kind.OPERATION_DEFINITION) {
+      collectFieldNames(def.selectionSet.selections, fragments, new Set(), fieldNames);
+    }
+  }
 
   return fieldNames;
 }
 
-function collectFieldNames(selection: SelectionNode, fieldNames: string[]): void {
-  if (selection.kind === Kind.FIELD) {
-    fieldNames.push(selection.name.value);
-  } else if (selection.kind === Kind.FRAGMENT_SPREAD) {
-    // Fragment spreads are resolved by the visitor entering the fragment definition
-  } else if (selection.kind === Kind.INLINE_FRAGMENT) {
-    for (const subSelection of selection.selectionSet.selections) {
-      collectFieldNames(subSelection, fieldNames);
+function collectFieldNames(
+  selections: readonly SelectionNode[],
+  fragments: Map<string, FragmentDefinitionNode>,
+  seen: Set<string>,
+  fieldNames: string[]
+): void {
+  for (const selection of selections) {
+    if (selection.kind === Kind.FIELD) {
+      fieldNames.push(selection.name.value);
+    } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+      collectFieldNames(selection.selectionSet.selections, fragments, seen, fieldNames);
+    } else {
+      const name = selection.name.value;
+      const fragment = fragments.get(name);
+      if (!fragment || seen.has(name)) continue;
+      seen.add(name);
+      collectFieldNames(fragment.selectionSet.selections, fragments, seen, fieldNames);
     }
   }
 }
@@ -107,20 +121,25 @@ export function requireAuth(
     return true;
   }
 
+  const rootFieldNames: string[] = [];
   let requiresAuth = true;
 
   try {
     const doc = parse(query);
-    const rootFieldNames = extractRootFieldNames(doc);
+    rootFieldNames.push(...extractRootFieldNames(doc));
 
-    requiresAuth = rootFieldNames.some(
-      fieldName => !(PUBLIC_QUERIES as readonly string[]).includes(fieldName)
-    );
+    requiresAuth =
+      rootFieldNames.length === 0 ||
+      rootFieldNames.some(
+        fieldName =>
+          !fieldName.startsWith('__') &&
+          !(PUBLIC_QUERIES as readonly string[]).includes(fieldName)
+      );
   } catch {
     requiresAuth = true;
   }
 
-  logger.debug('requireAuth check', { requireAuth: requiresAuth, query });
+  logger.debug('requireAuth check', { requireAuth: requiresAuth, rootFieldNames });
   return requiresAuth;
 }
 

@@ -317,4 +317,88 @@ describe('requireAuth', () => {
       expect(requireAuth(query)).toBe(true);
     });
   });
+
+  describe('Fragment spread resolution (review follow-up)', () => {
+    it('should return true for protected mutation wrapped in a root-level fragment spread', () => {
+      const query = `
+        mutation {
+          ...F
+        }
+        fragment F on Mutation {
+          deletePost(postId: "a") { id }
+        }
+      `;
+      expect(requireAuth(query)).toBe(true);
+    });
+
+    it('should return true for protected query wrapped in a root-level fragment spread', () => {
+      const query = `
+        query {
+          ...F
+        }
+        fragment F on Query {
+          notifications { id }
+        }
+      `;
+      expect(requireAuth(query)).toBe(true);
+    });
+
+    it('should return false for public query wrapped in a root-level fragment spread', () => {
+      const query = `
+        query {
+          ...F
+        }
+        fragment F on Query {
+          posts { id }
+        }
+      `;
+      expect(requireAuth(query)).toBe(false);
+    });
+
+    it('should resolve nested fragment spreads', () => {
+      const query = `
+        mutation {
+          ...A
+        }
+        fragment A on Mutation {
+          ...B
+        }
+        fragment B on Mutation {
+          deletePost(postId: "a") { id }
+        }
+      `;
+      expect(requireAuth(query)).toBe(true);
+    });
+
+    it('should handle cyclic fragment spreads without infinite loop', () => {
+      const query = `
+        query {
+          ...A
+        }
+        fragment A on Query {
+          ...B
+        }
+        fragment B on Query {
+          ...A
+          notifications { id }
+        }
+      `;
+      expect(requireAuth(query)).toBe(true);
+    });
+
+    it('should return true for introspection via __schema', () => {
+      const query = 'query IntrospectionQuery { __schema { types { name } } }';
+      expect(requireAuth(query)).toBe(false);
+    });
+
+    it('should return false for "searchUser" query (guest search)', () => {
+      const query = 'query { searchUser(queryName: "test") { id } }';
+      expect(requireAuth(query)).toBe(false);
+    });
+
+    it('should return false for "addStripeCustomer" mutation', () => {
+      const query = 'mutation { addStripeCustomer(stripeCustomer: {}) }';
+      expect(requireAuth(query)).toBe(false);
+    });
+  });
 });

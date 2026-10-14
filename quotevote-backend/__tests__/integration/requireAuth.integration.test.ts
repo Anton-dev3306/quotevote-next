@@ -117,9 +117,6 @@ describe('requireAuth Integration Tests', () => {
           const token = req.headers.authorization?.split(' ')[1];
           let user: Common.User | null = null;
 
-          // Check if this is an introspection query
-          const isIntrospection = req.body?.operationName === 'IntrospectionQuery';
-
           if (token) {
             try {
               const decoded = await auth.verifyToken(token);
@@ -136,14 +133,14 @@ describe('requireAuth Integration Tests', () => {
             }
           }
 
-          // Check if query requires authentication (skip for introspection)
-          if (!isIntrospection) {
-            const query = req.body?.query;
-            if (query && requireAuth(query) && !user) {
-              throw new GraphQLError('Auth token not found in request', {
-                extensions: { code: 'UNAUTHENTICATED' },
-              });
-            }
+          // Check if query requires authentication (introspection `__` fields are public)
+          const query =
+            (req.body as { query?: string } | undefined)?.query ??
+            (req.query?.query as string | undefined);
+          if (query && requireAuth(query) && !user) {
+            throw new GraphQLError('Auth token not found in request', {
+              extensions: { code: 'UNAUTHENTICATED' },
+            });
           }
 
           return {

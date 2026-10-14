@@ -95,7 +95,7 @@ export async function createWsContext(
  * 2. Verifies token and hydrates user from database
  * 3. Derives userId from authenticated user
  * 4. Generates requestId from x-request-id header or crypto.randomUUID()
- * 5. Enforces requireAuth for protected operations (skips IntrospectionQuery)
+ * 5. Enforces requireAuth for protected operations (introspection `__` fields are public)
  * 6. Returns full GraphQLContext with singleton Prisma Client
  *
  * @param params - Express request and response objects
@@ -115,17 +115,14 @@ export async function createHttpContext(
   // Generate requestId from header or crypto
   const requestId = (req.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID();
 
-  // Check if this is an introspection query (GraphQL Playground/IDE)
-  const isIntrospection = req.body?.operationName === 'IntrospectionQuery';
-
-  // Check if query requires authentication (skip for introspection)
-  if (!isIntrospection) {
-    const query = req.body?.query;
-    if (query && requireAuth(query) && !user) {
-      throw new GraphQLError('Auth token not found in request', {
-        extensions: { code: 'UNAUTHENTICATED' },
-      });
-    }
+  // Check if query requires authentication (introspection `__` fields are public)
+  const query =
+    (req.body as { query?: string } | undefined)?.query ??
+    (req.query?.query as string | undefined);
+  if (query && requireAuth(query) && !user) {
+    throw new GraphQLError('Auth token not found in request', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
   }
 
   return {
