@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { isEmpty } from 'lodash'
 import moment from 'moment'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { Link2, Bookmark, Share2 } from 'lucide-react'
+import { ExternalLink, Bookmark, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDomain, toAppPostUrl, toAbsolutePostUrl } from '@/lib/utils/sanitizeUrl'
 import { useAppStore } from '@/store'
@@ -399,10 +399,11 @@ function PostCardComponent({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
+                aria-label={`Source: ${getDomain(citationUrl)} (opens in a new tab)`}
                 className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1976d2] bg-[rgba(25,118,210,0.08)] border border-[rgba(25,118,210,0.2)] px-2 py-0.5 rounded-full hover:bg-[rgba(25,118,210,0.18)] transition-colors"
               >
-                <Link2 className="size-3" />
-                Source: {getDomain(citationUrl)}
+                <span>Source: {getDomain(citationUrl)}</span>
+                <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
               </a>
             )}
             {compact && attribution ? (

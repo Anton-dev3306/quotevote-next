@@ -10,6 +10,7 @@ import type { Reference } from "@apollo/client";
 import { Button } from "@/components/ui/button";
 import {
   Link2,
+  ExternalLink,
   Ban,
   Trash2,
   Hash,
@@ -453,10 +454,11 @@ export default function Post({
               href={citationHref}
               target="_blank"
               rel="noopener noreferrer"
+              aria-label={`Source: ${citationDomain} (opens in a new tab)`}
               className="inline-flex items-center gap-1.5 text-[13px] font-medium text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors dark:text-blue-400 dark:bg-blue-950/40 dark:hover:bg-blue-950/70"
             >
-              <Link2 className="size-3.5" />
-              Source: {citationDomain}
+              <span>Source: {citationDomain}</span>
+              <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
             </a>
           ) : null}
           <div className="ml-auto flex items-center gap-2.5 shrink-0">
