@@ -47,6 +47,15 @@ const nextConfig: NextConfig = {
         destination: "/post/:group/:title/:postId",
         permanent: false,
       },
+      // The legacy API builds email links under `/auth/*` (invite approval signup,
+      // password reset, request access), but this app serves those pages under `/auths/*`.
+      // Query strings such as `?token=` are passed through by Next.js redirects.
+      // Temporary, so the links can move once the API generates `/auths/*` URLs.
+      {
+        source: "/auth/:path*",
+        destination: "/auths/:path*",
+        permanent: false,
+      },
     ];
   },
 
