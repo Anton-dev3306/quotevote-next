@@ -386,7 +386,7 @@ describe('requireAuth', () => {
       expect(requireAuth(query)).toBe(true);
     });
 
-    it('should return true for introspection via __schema', () => {
+    it('should return false for introspection via __schema', () => {
       const query = 'query IntrospectionQuery { __schema { types { name } } }';
       expect(requireAuth(query)).toBe(false);
     });

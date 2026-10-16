@@ -133,11 +133,12 @@ describe('requireAuth Integration Tests', () => {
             }
           }
 
-          // Check if query requires authentication (introspection `__` fields are public)
-          const query =
-            (req.body as { query?: string } | undefined)?.query ??
-            (req.query?.query as string | undefined);
-          if (query && requireAuth(query) && !user) {
+          // Gate every query the request carries (Apollo runs the URL one on GET, the body one on POST)
+          const queries = [
+            (req.body as { query?: unknown } | undefined)?.query,
+            req.query?.query,
+          ].filter((q) => q !== undefined);
+          if (!user && queries.some((q) => typeof q !== 'string' || requireAuth(q))) {
             throw new GraphQLError('Auth token not found in request', {
               extensions: { code: 'UNAUTHENTICATED' },
             });
@@ -270,6 +271,24 @@ describe('requireAuth Integration Tests', () => {
 
       expect(res.body.errors).toBeUndefined();
       expect(res.body.data).toBeDefined();
+    });
+
+    it('should reject GET with public body query but protected URL query without authentication', async () => {
+      const bodyQuery = '{ posts }';
+      const urlQuery = '{ notifications { id } }';
+
+      const res = await request(app)
+        .get('/graphql')
+        .query({ query: urlQuery })
+        .send({ query: bodyQuery });
+
+      expect([200, 500]).toContain(res.status);
+
+      if (res.status === 200 && res.body.errors) {
+        expect(res.body.errors).toBeDefined();
+        expect(res.body.errors[0].message).toBe('Auth token not found in request');
+        expect(res.body.errors[0].extensions?.code).toBe('UNAUTHENTICATED');
+      }
     });
   });
 
