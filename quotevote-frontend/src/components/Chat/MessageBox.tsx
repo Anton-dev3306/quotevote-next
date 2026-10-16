@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Ban, UserX, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Settings, Ban, UserX, X } from 'lucide-react'
 import { useQuery } from '@apollo/client/react'
 
 import MessageSend from './MessageSend'
@@ -13,6 +13,7 @@ import useGuestGuard from '@/hooks/useGuestGuard'
 import { useAppStore } from '@/store'
 import { toast } from 'sonner'
 import { GET_CHAT_ROOMS, GET_ROSTER } from '@/graphql/queries'
+import { toAbsolutePostUrl } from '@/lib/utils/sanitizeUrl'
 import { DisplayAvatar } from '@/components/DisplayAvatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -141,6 +142,8 @@ function Header({ room, stagedProfileUsername }: HeaderProps) {
 
   const isUserRoom = messageType === 'USER'
   const showSettingsMenu = isUserRoom && !!otherUserId
+  // Same-app path only ('' origin), so a post discussion always has a way back to its post.
+  const postPath = !isUserRoom ? toAbsolutePostUrl(room?.postDetails?.url, '') : null
 
   return (
     <div className="sticky top-0 z-10 border-b bg-gradient-to-b from-white to-[#fafbfc] px-4 py-3 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)]">
@@ -183,8 +186,23 @@ function Header({ room, stagedProfileUsername }: HeaderProps) {
             <div className="truncate text-base font-bold text-foreground" style={{ letterSpacing: '-0.01em' }}>
               {title || 'Chat'}
             </div>
-            <div className="mt-0.5 text-[0.8125rem] text-muted-foreground">
-              {isUserRoom ? 'Direct Message' : 'Discussion'}
+            <div className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground">
+              <span>{isUserRoom ? 'Direct Message' : 'Discussion'}</span>
+              {postPath && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Link
+                    href={postPath}
+                    onClick={() => setChatOpen(false)}
+                    data-testid="discussion-view-post"
+                    aria-label={`View post${title ? `: ${title}` : ''}`}
+                    className="inline-flex items-center gap-0.5 rounded font-semibold text-[#52b274] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]/50"
+                  >
+                    View post
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

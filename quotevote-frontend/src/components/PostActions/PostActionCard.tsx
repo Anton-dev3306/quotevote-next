@@ -255,8 +255,8 @@ export default function PostActionCard({
         'group relative flex items-start gap-3 px-3.5 py-3 cursor-pointer transition-colors rounded-xl border',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
         selected
-          ? 'bg-[#52b274]/[0.06] border-[#52b274]/30 border-l-[4px] border-l-[#52b274]'
-          : 'border-border/70 border-l-[4px] border-l-transparent hover:bg-muted/30'
+          ? 'bg-card bg-[linear-gradient(rgba(82,178,116,0.06),rgba(82,178,116,0.06))] border-[#52b274]/40 border-l-[4px] border-l-[#52b274] shadow-sm'
+          : 'bg-card border-border border-l-[4px] border-l-transparent shadow-xs hover:border-foreground/20 hover:shadow-sm'
       )}
     >
       {/* Avatar */}

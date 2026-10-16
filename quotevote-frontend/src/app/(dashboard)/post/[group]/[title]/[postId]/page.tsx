@@ -319,7 +319,7 @@ function InteractionSection({
   return (
     <div className="flex flex-col h-full">
       {!hideHeader && (
-        <div data-discussion-header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-background shrink-0">
+        <div data-discussion-header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-card shrink-0">
           <span className="text-sm font-semibold text-foreground/75">
             Discussion · {postActions.length}
           </span>
@@ -332,7 +332,7 @@ function InteractionSection({
           <span>Live updates paused. Reconnecting...</span>
         </div>
       )}
-      <div data-discussion-scroll="true" className="flex-1 overflow-y-auto overscroll-contain">
+      <div data-discussion-scroll="true" className="flex-1 overflow-y-auto overscroll-contain bg-background">
         <PostActionList
           postActions={postActions}
           loading={postLoading}
@@ -344,7 +344,7 @@ function InteractionSection({
         />
       </div>
       {messageRoomId && (
-        <div className="border-t border-border px-4 py-3 bg-background shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="border-t border-border px-4 py-3 bg-card shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <PostChatSend
             messageRoomId={messageRoomId}
             title={postTitle ?? undefined}

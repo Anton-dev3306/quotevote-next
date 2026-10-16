@@ -614,6 +614,7 @@ export const GET_CHAT_ROOMS = gql`
       lastActivity
       unreadMessages
       postDetails {
+        _id
         title
         text
         url
