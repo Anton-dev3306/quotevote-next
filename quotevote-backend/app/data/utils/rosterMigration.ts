@@ -103,11 +103,8 @@ export function summarizeRoster(
       p[r.status] += 1;
       pairBuddy.set(pk, p);
     } else if (r.status === 'blocked') {
-      const blocker =
-        r.initiatedBy && [u, b].includes(r.initiatedBy.toLowerCase())
-          ? r.initiatedBy.toLowerCase()
-          : u;
-      blockEdges.add(`${blocker}>${blocker === u ? b : u}`);
+      // Legacy blockBuddy keys the row on (blocker, blocked), so userId is the blocker.
+      blockEdges.add(`${u}>${b}`);
     } else if (r.status === 'declined') {
       skip('declined');
     } else {
