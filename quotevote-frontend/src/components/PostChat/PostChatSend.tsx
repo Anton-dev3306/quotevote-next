@@ -219,10 +219,10 @@ export default function PostChatSend({
           }}
           data-testid="discussion-signin-cta"
           className={cn(
-            'min-h-[40px] flex-1 rounded-xl border border-border bg-muted/50',
-            'px-3 py-2.5 text-sm text-left text-foreground',
-            'hover:bg-muted hover:border-[#52b274]/40 transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20',
+            'min-h-[44px] flex-1 rounded-xl border border-input bg-card shadow-xs',
+            'px-3.5 py-2.5 text-sm text-left text-foreground',
+            'transition-[border-color,box-shadow] hover:border-[#52b274]/50',
+            'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/15',
           )}
           aria-label="Sign in to join the discussion"
         >
@@ -277,11 +277,12 @@ export default function PostChatSend({
           onKeyDown={handleKeyDown}
           disabled={submitting}
           className={cn(
-            'min-h-[40px] max-h-[120px] flex-1 resize-none rounded-xl',
-            'border border-border bg-muted/50',
-            'px-3 py-2.5 text-base md:text-sm',
-            'placeholder:text-muted-foreground/50',
-            'focus:bg-background focus:ring-2 focus:ring-primary/20',
+            'min-h-[44px] max-h-[120px] flex-1 resize-none rounded-xl',
+            'border border-input bg-card shadow-xs',
+            'px-3.5 py-2.5 text-base md:text-sm',
+            'placeholder:text-muted-foreground',
+            'transition-[border-color,box-shadow] hover:border-foreground/25',
+            'focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/15',
             submitting && 'opacity-50 cursor-not-allowed',
           )}
           rows={1}

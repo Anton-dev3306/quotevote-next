@@ -321,6 +321,57 @@ describe('MessageBox', () => {
     })
   })
 
+  it('links a post discussion back to its post and closes chat on click', async () => {
+    const setChatOpen = jest.fn()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockUseAppStore.mockImplementation((selector: any) => {
+      const state = {
+        user: { data: mockCurrentUser },
+        chat: { selectedRoom: 'room1', buddyList: [], presenceMap: {} },
+        setSelectedChatRoom: jest.fn(),
+        setChatOpen,
+        setSnackbar: jest.fn(),
+      }
+      return selector(state)
+    })
+    const postRoom: ChatRoom = {
+      _id: 'post-room-1',
+      title: 'A post title',
+      messageType: 'POST',
+      users: ['user1', 'user2'],
+      created: new Date().toISOString(),
+      postDetails: { _id: 'post1', title: 'A post title', url: '/post/qa/a-post-title/post1' },
+    }
+
+    render(<MessageBox roomOverride={postRoom} />)
+
+    const link = await screen.findByTestId('discussion-view-post')
+    expect(link).toHaveAttribute('href', '/post/qa/a-post-title/post1')
+    expect(link).toHaveAccessibleName('View post: A post title')
+
+    fireEvent.click(link)
+    expect(setChatOpen).toHaveBeenCalledWith(false)
+  })
+
+  it('does not show a post link for direct messages or rooms without a valid post path', async () => {
+    const { unmount } = render(<MessageBox />)
+    await screen.findByRole('button', { name: /close chat/i })
+    expect(screen.queryByTestId('discussion-view-post')).not.toBeInTheDocument()
+    unmount()
+
+    const offSiteRoom: ChatRoom = {
+      _id: 'post-room-2',
+      title: 'Off-site',
+      messageType: 'POST',
+      users: ['user1'],
+      created: new Date().toISOString(),
+      postDetails: { _id: 'post2', url: 'https://example.com/post/x/y/z' },
+    }
+    render(<MessageBox roomOverride={offSiteRoom} />)
+    await screen.findByText('Off-site')
+    expect(screen.queryByTestId('discussion-view-post')).not.toBeInTheDocument()
+  })
+
   it('renders close chat button and calls setChatOpen(false) when clicked', async () => {
     const setChatOpen = jest.fn()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

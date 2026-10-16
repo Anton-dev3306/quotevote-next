@@ -1,10 +1,13 @@
 "use client";
 
 import type { FC } from 'react';
-import { Quote } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowUpRight, Quote } from 'lucide-react';
 
 import Avatar from '@/components/Avatar';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAppStore } from '@/store';
+import { toAbsolutePostUrl } from '@/lib/utils/sanitizeUrl';
 import type { ChatParticipant } from '@/types/chat';
 
 interface QuotePostDetails {
@@ -24,12 +27,14 @@ const QuoteHeaderMessage: FC<QuoteHeaderMessageProps> = ({
   postDetails,
   postCreator,
 }) => {
+  const setChatOpen = useAppStore((state) => state.setChatOpen);
+
   if (!postDetails) return null;
 
-  const { title, text } = postDetails;
-
-  const authorName =
-    postCreator?.name || postCreator?.username || 'Unknown User';
+  const { title, text, url } = postDetails;
+  const authorName = postCreator?.name || postCreator?.username || null;
+  // Same-app path only ('' origin); without one the card simply has no link.
+  const postPath = toAbsolutePostUrl(url, '');
 
   return (
     <div className="px-4 pb-2 pt-3">
@@ -37,7 +42,7 @@ const QuoteHeaderMessage: FC<QuoteHeaderMessageProps> = ({
         <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-emerald-500 to-emerald-600" />
         <CardContent className="relative flex flex-col gap-3 pl-4">
           <div className="flex items-center gap-3">
-            {postCreator && (
+            {postCreator && authorName && (
               <Avatar
                 src={postCreator.avatar}
                 alt={authorName}
@@ -46,9 +51,11 @@ const QuoteHeaderMessage: FC<QuoteHeaderMessageProps> = ({
               />
             )}
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-foreground">
-                {authorName}
-              </div>
+              {authorName && (
+                <div className="truncate text-sm font-semibold text-foreground">
+                  {authorName}
+                </div>
+              )}
               <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Quote className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Original Quote</span>
@@ -68,10 +75,17 @@ const QuoteHeaderMessage: FC<QuoteHeaderMessageProps> = ({
             </div>
           )}
 
-          <div className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-white shadow-sm">
-            <Quote className="mr-1 h-3 w-3" />
-            <span>Discussion Topic</span>
-          </div>
+          {postPath && (
+            <Link
+              href={postPath}
+              onClick={() => setChatOpen(false)}
+              data-testid="quote-header-view-post"
+              className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            >
+              View post
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -79,4 +93,3 @@ const QuoteHeaderMessage: FC<QuoteHeaderMessageProps> = ({
 };
 
 export default QuoteHeaderMessage;
-
