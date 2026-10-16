@@ -25,7 +25,7 @@ export const selectPostGroup = selectPostTag;
 
 export async function assertComposerRemainsOpen(page: Page): Promise<void> {
   await expect(page.getByTestId('post-composer')).toBeVisible();
-  await expect(page).not.toHaveURL(/\/dashboard\/post\/[^/]+\/[^/]+\/[^/?#]+/);
+  await expect(page).not.toHaveURL(/\/post\/[^/]+\/[^/]+\/[^/?#]+/);
   await expect(page.locator('[data-sonner-toast][data-type="success"]')).toHaveCount(0);
 }
 

@@ -69,17 +69,17 @@ test.describe('E2E-POST-001: Create Public Post', () => {
     await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0);
     await expect(page).toHaveURL((url) => url.pathname === '/', { timeout: 30_000 });
 
-    // Expected: post appears in a relevant list (explore/home feed)
-    const postCard = page.getByTestId('post-card').filter({ hasText: postTitle }).first();
-    await expect(postCard).toBeVisible({ timeout: 30_000 });
-
-    await postCard.click();
+    // Expected: the success toast links straight to the new post (#533).
+    // Checked right away, before the toast auto-dismisses; the feed is checked at the end.
+    const successToast = page.locator('[data-sonner-toast][data-type="success"]');
+    await expect(successToast).toContainText('Post created!');
+    await successToast.getByRole('button', { name: 'View post' }).click();
 
     // Expected: unique post URL generated
-    await expect(page).toHaveURL(/\/dashboard\/post\/.+\/.+\/.+/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/post\/.+\/.+\/.+/, { timeout: 30_000 });
 
     const postUrl = page.url();
-    const postIdMatch = postUrl.match(/\/dashboard\/post\/[^/]+\/[^/]+\/([^/?#]+)/);
+    const postIdMatch = postUrl.match(/\/post\/[^/]+\/[^/]+\/([^/?#]+)/);
     expect(postIdMatch?.[1]).toBeTruthy();
     createdPostId = postIdMatch![1];
 
