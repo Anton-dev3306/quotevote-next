@@ -40,7 +40,7 @@ import {
 import { GET_GROUP, GET_POST, GET_TOP_POSTS, GET_USERS } from "@/graphql/queries";
 import useGuestGuard from "@/hooks/useGuestGuard";
 import { POST_ACTION_PILL_CLASS } from "@/lib/constants/postActions";
-import { VOTE_AXIS } from "@/lib/constants/voteAxes";
+import { VOTE_AXIS, VOTE_LABELS } from "@/lib/constants/voteAxes";
 import { cn } from "@/lib/utils";
 import { scrollActionIntoDiscussion } from "@/lib/utils/discussionSplit";
 import { getDomain, sanitizeUrl, toAbsolutePostUrl } from "@/lib/utils/sanitizeUrl";
@@ -111,7 +111,7 @@ export default function Post({
     fetchPolicy: "cache-first",
   });
 
-  const [addVote] = useMutation(VOTE, {
+  const [addVote] = useMutation<{ addVote?: { _id?: string | null } | null }>(VOTE, {
     update() {
       refetchPost?.();
     },
@@ -259,22 +259,47 @@ export default function Post({
       if (opposite) {
         await removeVote({ variables: { voteId: opposite._id } });
       }
-      await addVote({
-        variables: {
-          vote: {
-            content: passage.text || "",
-            postId: post._id,
-            userId: user._id,
-            type: obj.type,
-            tags: obj.tags,
-            startWordIndex: passage.startIndex,
-            endWordIndex: passage.endIndex,
-          },
-        },
+      const res = await addVote({ variables: { vote: passageVote(passage, obj) } });
+      const voteId = res.data?.addVote?._id;
+      toast.success(`Vote saved: ${VOTE_LABELS[obj.tags]}`, {
+        duration: 8000,
+        action: voteId
+          ? { label: "Undo", onClick: () => void undoVote(voteId, passage, opposite) }
+          : undefined,
       });
-      toast.success("Voted successfully");
     } catch (err) {
       reportVoteError("Vote error", err);
+    }
+  };
+
+  const passageVote = (passage: SelectedText, choice: { type: VoteType; tags: VoteOption }) => ({
+    content: passage.text || "",
+    postId: post._id,
+    userId: user._id,
+    type: choice.type,
+    tags: choice.tags,
+    startWordIndex: passage.startIndex,
+    endWordIndex: passage.endIndex,
+  });
+
+  // Removes the new vote and, if it replaced the other side of a pair, puts that response back.
+  const undoVote = async (voteId: string, passage: SelectedText, replaced?: UserVote) => {
+    try {
+      await removeVote({ variables: { voteId } });
+      if (replaced?.tags) {
+        await addVote({
+          variables: {
+            vote: passageVote(passage, { type: replaced.type, tags: replaced.tags as VoteOption }),
+          },
+        });
+      }
+      toast.success(
+        replaced?.tags
+          ? `Vote undone, ${VOTE_LABELS[replaced.tags as VoteOption]} is back`
+          : "Vote undone"
+      );
+    } catch (err) {
+      reportVoteError("Couldn't undo the vote", err);
     }
   };
 
@@ -424,9 +449,7 @@ export default function Post({
                   isFollowing={isFollowing}
                   profileUserId={userId}
                   username={username || ""}
-                  followingLabel="Following"
-                  buttonVariant="outline"
-                  className="h-8 rounded-full px-4 text-sm font-semibold border-blue-300 text-blue-600 bg-background shadow-none hover:bg-blue-50 hover:text-blue-700 dark:border-blue-400/50 dark:text-blue-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+                  className="h-8 rounded-full px-4 text-sm font-semibold"
                 />
               )}
             </div>

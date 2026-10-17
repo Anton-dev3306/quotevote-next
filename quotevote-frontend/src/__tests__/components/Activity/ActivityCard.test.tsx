@@ -82,22 +82,22 @@ describe('ActivityCard', () => {
     const handleLike = jest.fn()
     render(<ActivityCard {...defaultProps} onLike={handleLike} />)
 
-    const bookmarkButton = screen.getByLabelText(/bookmark/i)
+    const bookmarkButton = screen.getByLabelText('Save post')
     await userEvent.click(bookmarkButton)
 
     expect(handleLike).toHaveBeenCalled()
   })
 
-  it('displays bookmark icon when liked', () => {
+  it('shows the saved state when liked', () => {
     render(<ActivityCard {...defaultProps} liked={true} />)
 
-    expect(screen.getByLabelText(/unbookmark/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Remove saved post')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('displays unbookmark icon when not liked', () => {
+  it('shows the unsaved state when not liked', () => {
     render(<ActivityCard {...defaultProps} liked={false} />)
 
-    expect(screen.getByLabelText(/bookmark/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Save post')).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('displays interaction count', () => {

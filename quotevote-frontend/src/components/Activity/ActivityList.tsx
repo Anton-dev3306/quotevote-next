@@ -17,6 +17,7 @@ import {
   GET_USER_ACTIVITY,
 } from '@/graphql/queries'
 import useGuestGuard from '@/hooks/useGuestGuard'
+import { announceBookmarkChange } from '@/lib/utils/bookmarkFeedback'
 import { toAppPostUrl } from '@/lib/utils/sanitizeUrl'
 import type { ActivityListProps, ActivityEntity } from '@/types/activity'
 
@@ -81,9 +82,15 @@ function LoadActivityCard({
   const handleLike = async () => {
     if (!ensureAuth() || !currentUser?._id) return
 
-    await updatePostBookmark({
-      variables: { postId, userId: currentUser._id },
-    })
+    // GraphQL errors are already shown by the global Apollo error link.
+    try {
+      await updatePostBookmark({
+        variables: { postId, userId: currentUser._id },
+      })
+    } catch {
+      return
+    }
+    announceBookmarkChange(Boolean(isLiked))
 
     await createPostMessageRoom({
       variables: { postId },

@@ -18,6 +18,7 @@ import HighlightText from '@/components/HighlightText/HighlightText'
 import { DisplayAvatar } from '@/components/DisplayAvatar'
 import type { PostCardProps } from '@/types/post'
 import { STANDARD_POST_CARD_THEME } from '@/lib/constants/postCardTheme'
+import { announceBookmarkChange } from '@/lib/utils/bookmarkFeedback'
 
 // Standard post cards are always blue. Vote state is communicated by the
 // up/down controls, not the card chrome. Green/red belong to profile activity
@@ -105,6 +106,7 @@ function PostCardComponent({
     if (!userId) return
     try {
       await updateBookmark({ variables: { postId: _id, userId } })
+      announceBookmarkChange(isBookmarked)
     } catch {
       toast.error('Failed to update bookmark')
     }
@@ -350,11 +352,12 @@ function PostCardComponent({
               className={cn(
                 'p-1.5 rounded transition-colors',
                 isBookmarked
-                  ? 'text-amber-500'
-                  : 'text-muted-foreground/60 hover:text-amber-500 hover:bg-amber-500/10'
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-muted-foreground/60 hover:text-amber-600 hover:bg-amber-500/10'
               )}
               onClick={handleBookmark}
-              aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
+              aria-label={isBookmarked ? 'Remove saved post' : 'Save post'}
+              aria-pressed={isBookmarked}
             >
               <Bookmark className="size-4" fill={isBookmarked ? 'currentColor' : 'none'} />
             </button>

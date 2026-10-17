@@ -144,17 +144,18 @@ function ActivityActions({
       <Button
         variant="ghost"
         size="icon"
-        className="h-auto w-auto p-0"
+        className={cn('h-auto w-auto p-0', liked && 'text-amber-600 dark:text-amber-400')}
         onClick={(e) => {
           e.stopPropagation()
           if (onLike) {
             onLike(liked || false, e)
           }
         }}
-        aria-label={liked ? 'Unbookmark' : 'Bookmark'}
+        aria-label={liked ? 'Remove saved post' : 'Save post'}
+        aria-pressed={Boolean(liked)}
       >
         {liked ? (
-          <BookmarkCheck className="size-5" />
+          <BookmarkCheck className="size-5" fill="currentColor" fillOpacity={0.2} />
         ) : (
           <Bookmark className="size-5" />
         )}
