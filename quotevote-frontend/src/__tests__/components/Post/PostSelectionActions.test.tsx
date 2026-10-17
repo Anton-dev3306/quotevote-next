@@ -43,9 +43,17 @@ jest.mock("@apollo/client/react", () => ({
 }));
 
 const mockToastError = jest.fn();
+const mockToastSuccess = jest.fn();
 jest.mock("sonner", () => ({
-  toast: { success: jest.fn(), error: (...args: unknown[]) => mockToastError(...args) },
+  toast: {
+    success: (...args: unknown[]) => mockToastSuccess(...args),
+    error: (...args: unknown[]) => mockToastError(...args),
+  },
 }));
+
+type ToastOptions = { action?: { label: string; onClick: () => void } };
+const lastToastOptions = (): ToastOptions | undefined =>
+  mockToastSuccess.mock.calls.at(-1)?.[1] as ToastOptions | undefined;
 
 const SELECTION: SelectedText = {
   startIndex: 5,
@@ -277,6 +285,70 @@ describe("Post selection actions", () => {
     fireEvent.click(await screen.findByText("stub-like"));
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledWith("Vote error: socket hang up"));
+  });
+
+  it("confirms the vote with an Undo that removes it", async () => {
+    renderPost();
+
+    fireEvent.click(await screen.findByText("stub-agree"));
+
+    await waitFor(() =>
+      expect(mockToastSuccess).toHaveBeenCalledWith("Vote saved: Agree", expect.anything())
+    );
+    const action = lastToastOptions()?.action;
+    expect(action?.label).toBe("Undo");
+
+    action?.onClick();
+
+    await waitFor(() => expect(mockToastSuccess).toHaveBeenLastCalledWith("Vote undone"));
+    expect(mockRemoveVote).toHaveBeenCalledWith({ variables: { voteId: "v-new" } });
+    expect(mockAddVote).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts the replaced response back when the vote is undone", async () => {
+    renderPost({}, [vote("v-agree", "up", "#agree")]);
+
+    fireEvent.click(await screen.findByText("stub-disagree"));
+    await waitFor(() => expect(lastToastOptions()?.action?.label).toBe("Undo"));
+
+    lastToastOptions()?.action?.onClick();
+
+    await waitFor(() =>
+      expect(mockToastSuccess).toHaveBeenLastCalledWith("Vote undone, Agree is back")
+    );
+    expect(mockRemoveVote).toHaveBeenLastCalledWith({ variables: { voteId: "v-new" } });
+    expect(mockAddVote).toHaveBeenCalledTimes(2);
+    expect(mockAddVote.mock.calls[1][0].variables.vote).toMatchObject({
+      type: "up",
+      tags: "#agree",
+      startWordIndex: 5,
+      endWordIndex: 20,
+    });
+  });
+
+  it("leaves out Undo when the API doesn't return the new vote's id", async () => {
+    mockAddVote.mockResolvedValueOnce({ data: { addVote: { _id: null } } });
+    renderPost();
+
+    fireEvent.click(await screen.findByText("stub-agree"));
+
+    await waitFor(() =>
+      expect(mockToastSuccess).toHaveBeenCalledWith("Vote saved: Agree", expect.anything())
+    );
+    expect(lastToastOptions()?.action).toBeUndefined();
+  });
+
+  it("reports a failed undo", async () => {
+    renderPost();
+    fireEvent.click(await screen.findByText("stub-agree"));
+    await waitFor(() => expect(lastToastOptions()?.action?.label).toBe("Undo"));
+    mockRemoveVote.mockRejectedValueOnce(new Error("socket hang up"));
+
+    lastToastOptions()?.action?.onClick();
+
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith("Couldn't undo the vote: socket hang up")
+    );
   });
 
   it("gives the popup VotingBoard's dismiss control", async () => {

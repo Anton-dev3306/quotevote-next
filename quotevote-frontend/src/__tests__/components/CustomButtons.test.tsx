@@ -476,11 +476,11 @@ describe('CustomButtons Components', () => {
       }
     });
 
-    it('renders Un-Follow when following and rendered', () => {
+    it('renders Following when following and rendered', () => {
       const { container } = render(<FollowButton isFollowing={true} profileUserId="user-1" />);
       const result = checkComponentRendered(container);
       if (result.rendered) {
-        expect(screen.getByText(/Un-Follow/i)).toBeInTheDocument();
+        expect(screen.getByText('Following')).toBeInTheDocument();
       } else {
         expect(container).toBeInTheDocument();
       }
@@ -570,7 +570,7 @@ describe('CustomButtons Components', () => {
       );
       const result = checkComponentRendered(container);
       if (result.rendered) {
-        const button = container.querySelector('button[aria-label*="Bookmark"]');
+        const button = container.querySelector('button[aria-label="Save post"]');
         expect(button).toBeInTheDocument();
       } else {
         expect(container).toBeInTheDocument();

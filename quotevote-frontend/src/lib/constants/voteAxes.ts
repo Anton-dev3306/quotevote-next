@@ -12,3 +12,13 @@ export const VOTE_AXIS: Record<VoteOption, VoteAxis> = {
   "#like": "liking",
   "#dislike": "liking",
 };
+
+/** Display name of each vote response, as shown in the voting popup. */
+export const VOTE_LABELS: Record<VoteOption, string> = {
+  "#agree": "Agree",
+  "#disagree": "Disagree",
+  "#true": "True",
+  "#false": "False",
+  "#like": "Like",
+  "#dislike": "Dislike",
+};

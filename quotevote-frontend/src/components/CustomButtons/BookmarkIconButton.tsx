@@ -9,6 +9,7 @@ import { GET_CHAT_ROOMS, GET_POST, GET_USER_ACTIVITY, GET_TOP_POSTS } from "@/gr
 import type { BookmarkIconButtonProps } from "@/types/components";
 import { POST_ACTION_PILL_CLASS } from "@/lib/constants/postActions";
 import { cn } from "@/lib/utils";
+import { announceBookmarkChange } from "@/lib/utils/bookmarkFeedback";
 
 /**
  * BookmarkIconButton Component
@@ -27,13 +28,22 @@ export function BookmarkIconButton({
   const [createPostMessageRoom] = useMutation(CREATE_POST_MESSAGE_ROOM);
   const ensureAuth = useGuestGuard();
 
+  const isBookmarked = !!post.bookmarkedBy?.includes(user._id);
+  const label = isBookmarked ? "Remove saved post" : "Save post";
+
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!ensureAuth()) return;
 
-    await updatePostBookmark({
-      variables: { postId: post._id, userId: user._id },
-    });
+    // GraphQL errors are already shown by the global Apollo error link.
+    try {
+      await updatePostBookmark({
+        variables: { postId: post._id, userId: user._id },
+      });
+    } catch {
+      return;
+    }
+    announceBookmarkChange(isBookmarked);
 
     await createPostMessageRoom({
       variables: { postId: post._id },
@@ -70,9 +80,6 @@ export function BookmarkIconButton({
     });
   };
 
-  const isBookmarked = post.bookmarkedBy && post.bookmarkedBy.includes(user._id);
-  const label = isBookmarked ? "Remove saved post" : "Save post";
-
   if (showLabel) {
     return (
       <Button
@@ -80,7 +87,7 @@ export function BookmarkIconButton({
         size="sm"
         onClick={handleClick}
         aria-label={label}
-        aria-pressed={!!isBookmarked}
+        aria-pressed={isBookmarked}
         className={cn(
           POST_ACTION_PILL_CLASS,
           "text-muted-foreground border-border bg-background shadow-none gap-1 shrink-0",
@@ -90,7 +97,7 @@ export function BookmarkIconButton({
         )}
       >
         {isBookmarked ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
-        Save
+        {isBookmarked ? "Saved" : "Save"}
       </Button>
     );
   }
@@ -100,10 +107,15 @@ export function BookmarkIconButton({
       variant="ghost"
       size="icon"
       onClick={handleClick}
-      aria-label={isBookmarked ? "Unbookmark" : "Bookmark"}
-      className={className}
+      aria-label={label}
+      aria-pressed={isBookmarked}
+      className={cn(isBookmarked && "text-amber-600 dark:text-amber-400", className)}
     >
-      {isBookmarked ? <BookmarkCheck className="size-5" /> : <Bookmark className="size-5" />}
+      {isBookmarked ? (
+        <BookmarkCheck className="size-5" fill="currentColor" fillOpacity={0.2} />
+      ) : (
+        <Bookmark className="size-5" />
+      )}
     </Button>
   );
 }
