@@ -77,6 +77,9 @@ type Query {
 
   " This will query user info if token is valid"
   verifyUserPasswordResetToken(token: String!): JSON
+
+  " Verify a limited-purpose invite signup token (not a session)"
+  verifyInviteSignupToken(token: String!): JSON
   
   " This will query user notifications"
   notifications: [Notification]

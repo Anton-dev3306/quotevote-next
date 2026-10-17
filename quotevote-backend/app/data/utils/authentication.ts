@@ -1,12 +1,12 @@
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
-import * as crypto from 'crypto';
 import { GraphQLError } from 'graphql';
 import type { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { logger } from './logger';
 import { prisma } from '~/lib/prisma';
 import type { JWTPayload } from '../../types/express';
-
+import { CURRENT_TERMS_HASH, CURRENT_TERMS_VERSION, isCurrentTermsVersion } from './termsPolicy';
 
 /**
  * Environment Variables correctly typed via process.env augmentation
@@ -15,15 +15,29 @@ import type { JWTPayload } from '../../types/express';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
-    if (process.env.NODE_ENV === 'production') {
-        logger.error('CRITICAL: process.env.JWT_SECRET is not defined. Authentication is insecure.');
-        throw new Error('process.env.JWT_SECRET must be defined in production.');
-    } else {
-        logger.warn('NOTICE: process.env.JWT_SECRET is not defined. Using development fallback secret.');
-    }
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('CRITICAL: process.env.JWT_SECRET is not defined. Authentication is insecure.');
+    throw new Error('process.env.JWT_SECRET must be defined in production.');
+  } else {
+    logger.warn(
+      'NOTICE: process.env.JWT_SECRET is not defined. Using development fallback secret.'
+    );
+  }
 }
 
 const safeSecret = JWT_SECRET || 'dev_jwt_secret_fallback_do_not_use_in_prod';
+
+/** Limited-purpose JWT for invite-based signup completion only (#573). */
+export const INVITE_SIGNUP_TOKEN_TYPE = 'invite_signup' as const;
+export const INVITE_SIGNUP_TOKEN_PURPOSE = 'completeSignup' as const;
+
+export interface InviteSignupTokenPayload {
+  userId: string;
+  type: typeof INVITE_SIGNUP_TOKEN_TYPE;
+  purpose: typeof INVITE_SIGNUP_TOKEN_PURPOSE;
+  iat?: number;
+  exp?: number;
+}
 
 /**
  * Formats a string to title case (e.g., "fast_food" -> "Fast_food").
@@ -31,118 +45,151 @@ const safeSecret = JWT_SECRET || 'dev_jwt_secret_fallback_do_not_use_in_prod';
  * @returns The formatted string.
  */
 export const toTitleCase = (str: string): string => {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
 
 /**
- * Creates a guest user with a random username and password.
- * @param req Express request object.
- * @param res Express response object.
- * @returns A promise that resolves when the user is created.
+ * Issues a one-day invite-signup token. Valid only for `completeSignup`, never
+ * as a general GraphQL session.
  */
-export const createGuestUser = async (req: Request, res: Response): Promise<void> => {
-    logger.info('Creating guest user', { body: req.body });
-
-    try {
-        const randomUser = crypto.randomBytes(20).toString('hex');
-        const hashedPassword = await generateHashPassword(randomUser);
-
-        const newUser = await prisma.user.create({
-            data: {
-                name: 'guest',
-                username: randomUser,
-                email: `${randomUser}@gmail.com`,
-                password: hashedPassword,
-            },
-            select: {
-                id: true,
-                name: true,
-                username: true,
-                email: true,
-            },
-        });
-
-        res.status(201).json({
-            _id: newUser.id,
-            name: newUser.name,
-            username: newUser.username,
-            email: newUser.email,
-        });
-    } catch (err) {
-        logger.error('createGuestUser error', { error: err instanceof Error ? err.message : String(err) });
-        res.status(500).json({ message: 'Internal server error while creating guest user' });
-    }
+export const generateInviteSignupToken = (
+  userId: string,
+  expiresInSeconds = 60 * 60 * 24
+): string => {
+  const payload: InviteSignupTokenPayload = {
+    userId,
+    type: INVITE_SIGNUP_TOKEN_TYPE,
+    purpose: INVITE_SIGNUP_TOKEN_PURPOSE,
+  };
+  return jwt.sign(payload, safeSecret, { expiresIn: expiresInSeconds });
 };
 
 /**
- * Registers a new user after validating required fields and checking for existing usernames.
- * @param req Express request object.
- * @param res Express response object.
- * @returns A promise that resolves to void.
+ * Verifies an invite-signup token and returns its payload.
+ * @throws GraphQLError when the token is missing, expired, or wrong type.
+ */
+export const verifyInviteSignupToken = (rawToken: string): InviteSignupTokenPayload => {
+  const token = rawToken.startsWith('Bearer ') ? rawToken.substring(7) : rawToken;
+  try {
+    const decoded = jwt.verify(token, safeSecret) as InviteSignupTokenPayload;
+    if (
+      decoded.type !== INVITE_SIGNUP_TOKEN_TYPE ||
+      decoded.purpose !== INVITE_SIGNUP_TOKEN_PURPOSE ||
+      !decoded.userId
+    ) {
+      throw new GraphQLError('Invalid invite signup token', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    return decoded;
+  } catch (err: unknown) {
+    if (err instanceof GraphQLError) throw err;
+    const error = err as Error;
+    if (error.name === 'TokenExpiredError') {
+      throw new GraphQLError('Invite signup token has expired', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    throw new GraphQLError('Invalid invite signup token', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+};
+
+/**
+ * Registers a new user after validating required fields, Terms version, and
+ * username uniqueness. Creates the user and TermsAcceptance atomically.
  */
 export const register = async (req: Request, res: Response): Promise<void> => {
-    logger.info('Registering new user', { username: req.body.username });
-    try {
-        const requiredFields = ['name', 'email', 'username', 'password'];
+  logger.info('Registering new user', { username: req.body.username });
+  try {
+    const requiredFields = ['name', 'email', 'username', 'password'];
 
-        for (const field of requiredFields) {
-            if (!req.body[field]) {
-                res.status(400).json({
-                    error_message: `${toTitleCase(field)} is required.`,
-                });
-                return;
-            }
-        }
-
-        // Check if user already exists
-        const existingUser = await prisma.user.findFirst({ 
-            where: { username: req.body.username },
-            select: { id: true, username: true }
+    for (const field of requiredFields) {
+      if (!req.body[field]) {
+        res.status(400).json({
+          error_message: `${toTitleCase(field)} is required.`,
         });
-        if (existingUser) {
-            res.status(409).json({
-                error_message: `Username ${existingUser.username} already exists!`,
-            });
-            return;
-        }
-
-        const { name, email, username, password, status } = req.body;
-
-        // Hash password explicitly (Prisma has no hooks)
-        const hashedPassword = await generateHashPassword(password);
-
-        const user = await prisma.user.create({
-            data: {
-                name,
-                email,
-                username,
-                password: hashedPassword,
-                accountStatus: status === 'disabled' ? 'disabled' : 'active',
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                username: true,
-            }
-        });
-
-        res.status(201).json({
-            message: 'User registered successfully',
-            user: {
-                _id: user.id,
-                name: user.name,
-                email: user.email,
-                username: user.username,
-            },
-        });
-    } catch (err) {
-        logger.error('Registration error', { error: err });
-        res.status(500).json({
-            error_message: 'Error saving user',
-        });
+        return;
+      }
     }
+
+    const acceptedTermsVersion = req.body.acceptedTermsVersion;
+    if (!isCurrentTermsVersion(acceptedTermsVersion)) {
+      res.status(400).json({
+        error_message: 'You must accept the current Terms of Service to create an account.',
+      });
+      return;
+    }
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [{ username: req.body.username }, { email: req.body.email }],
+      },
+      select: { id: true, username: true, email: true },
+    });
+    if (existingUser) {
+      const conflict =
+        existingUser.username === req.body.username
+          ? `Username ${existingUser.username} already exists!`
+          : 'Email already exists!';
+      res.status(409).json({
+        error_message: conflict,
+      });
+      return;
+    }
+
+    const { name, email, username, password, status } = req.body;
+
+    // Hash password explicitly (Prisma has no hooks)
+    const hashedPassword = await generateHashPassword(password);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        username,
+        password: hashedPassword,
+        accountStatus: status === 'disabled' ? 'disabled' : 'active',
+        termsAcceptances: {
+          create: {
+            termsVersion: CURRENT_TERMS_VERSION,
+            termsHash: CURRENT_TERMS_HASH,
+            source: 'direct_registration',
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+      },
+    });
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      user: {
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        username: user.username,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      res.status(409).json({
+        error_message: 'Username or email already exists!',
+      });
+      return;
+    }
+    logger.error('Registration error', { error: err });
+    res.status(500).json({
+      error_message: 'Error saving user',
+    });
+  }
 };
 
 /**
@@ -151,18 +198,18 @@ export const register = async (req: Request, res: Response): Promise<void> => {
  * @returns A promise that resolves to the hashed password.
  */
 export const generateHashPassword = async (password: string): Promise<string> => {
-    const salt = await bcrypt.genSalt(10);
-    return bcrypt.hash(password, salt);
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(password, salt);
 };
 
 const invalidUserPassword = (res: Response) => {
-    return res.status(401).json({ message: 'Invalid username or password.' });
+  return res.status(401).json({ message: 'Invalid username or password.' });
 };
 
 interface AddCreatorToUserParams {
-    username: string;
-    password?: string;
-    requirePassword?: boolean;
+  username: string;
+  password?: string;
+  requirePassword?: boolean;
 }
 
 /**
@@ -175,83 +222,83 @@ interface AddCreatorToUserParams {
  * @returns A promise that resolves to the response or token string.
  */
 export const addCreatorToUser = async (
-    { username, password, requirePassword }: AddCreatorToUserParams,
-    res: Response,
-    authenticate: boolean,
-    expiresIn: number = 60 * 15, // Default 15 minutes for access token
-    tokenOnly: boolean = false
+  { username, password, requirePassword }: AddCreatorToUserParams,
+  res: Response,
+  authenticate: boolean,
+  expiresIn: number = 60 * 15, // Default 15 minutes for access token
+  tokenOnly: boolean = false
 ): Promise<Response | string | void> => {
-    const isEmail = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(username);
-    const user = await prisma.user.findFirst({
-        where: isEmail ? { email: username } : { username },
-        select: {
-            id: true,
-            password: true,
-            email: true,
-            username: true,
-            isAdmin: true,
-            accountStatus: true,
-            name: true,
-            avatar: true,
-            bio: true,
-        },
+  const isEmail = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(username);
+  const user = await prisma.user.findFirst({
+    where: isEmail ? { email: username } : { username },
+    select: {
+      id: true,
+      password: true,
+      email: true,
+      username: true,
+      isAdmin: true,
+      accountStatus: true,
+      name: true,
+      avatar: true,
+      bio: true,
+    },
+  });
+
+  if (!user) {
+    return invalidUserPassword(res);
+  }
+
+  // Check if account is disabled
+  if (user.accountStatus === 'disabled') {
+    return res.status(403).json({
+      message:
+        'Your account has been flagged as a bot and temporarily disabled. If you believe this is a mistake, please email admin@quote.vote to appeal.',
+      accountDisabled: true,
     });
+  }
 
-    if (!user) {
-        return invalidUserPassword(res);
-    }
+  if (requirePassword) {
+    if (!password) return invalidUserPassword(res);
+    // Prisma doesn't have instance methods, use bcrypt.compare directly
+    const isMatch = await bcrypt.compare(password, user.password || '');
+    if (!isMatch) return invalidUserPassword(res);
+  }
 
-    // Check if account is disabled
-    if (user.accountStatus === 'disabled') {
-        return res.status(403).json({
-            message:
-                'Your account has been flagged as a bot and temporarily disabled. If you believe this is a mistake, please email admin@quote.vote to appeal.',
-            accountDisabled: true,
-        });
-    }
+  const payload: JWTPayload = {
+    email: user.email,
+    username: user.username,
+    userId: user.id,
+    admin: user.isAdmin,
+  };
 
-    if (requirePassword) {
-        if (!password) return invalidUserPassword(res);
-        // Prisma doesn't have instance methods, use bcrypt.compare directly
-        const isMatch = await bcrypt.compare(password, user.password || '');
-        if (!isMatch) return invalidUserPassword(res);
-    }
+  const accessToken = jwt.sign(payload, safeSecret, { expiresIn });
+  const refreshToken = generateRefreshToken(payload);
 
-    const payload: JWTPayload = {
-        email: user.email,
-        username: user.username,
-        userId: user.id,
-        admin: user.isAdmin,
-    };
+  if (tokenOnly) {
+    return accessToken;
+  }
 
-    const accessToken = jwt.sign(payload, safeSecret, { expiresIn });
-    const refreshToken = generateRefreshToken(payload);
-
-    if (tokenOnly) {
-        return accessToken;
-    }
-
-    if (authenticate) {
-        return res.json({
-            accessToken,
-            refreshToken,
-        });
-    }
-
+  if (authenticate) {
     return res.json({
-        accessToken,
-        refreshToken,
-        user: {
-            _id: user.id,
-            name: user.name,
-            username: user.username,
-            email: user.email,
-            admin: user.isAdmin,
-            accountStatus: user.accountStatus,
-            avatar: user.avatar ?? null,
-            bio: user.bio ?? '',
-        },
+      accessToken,
+      refreshToken,
     });
+  }
+
+  return res.json({
+    accessToken,
+    refreshToken,
+    user: {
+      _id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      admin: user.isAdmin,
+      accountStatus: user.accountStatus,
+      avatar: user.avatar ?? null,
+      bio: user.bio ?? '',
+    },
+  });
 };
 
 /**
@@ -261,20 +308,20 @@ export const addCreatorToUser = async (
  * @returns A promise that resolves to the response.
  */
 export const login = async (req: Request, res: Response): Promise<Response | void> => {
-    const { username, password } = req.body;
+  const { username, password } = req.body;
 
-    if (!username) {
-        return res.status(400).json({ message: 'Username is required.' });
-    }
-    if (!password) {
-        return res.status(400).json({ message: 'Password is required.' });
-    }
+  if (!username) {
+    return res.status(400).json({ message: 'Username is required.' });
+  }
+  if (!password) {
+    return res.status(400).json({ message: 'Password is required.' });
+  }
 
-    return addCreatorToUser(
-        { username, password, requirePassword: true },
-        res,
-        false
-    ) as Promise<Response | void>;
+  return addCreatorToUser(
+    { username, password, requirePassword: true },
+    res,
+    false
+  ) as Promise<Response | void>;
 };
 
 /**
@@ -284,21 +331,21 @@ export const login = async (req: Request, res: Response): Promise<Response | voi
  * @returns A promise that resolves to the response.
  */
 export const authenticate = async (req: Request, res: Response): Promise<Response | void> => {
-    logger.info('Performing strict authentication', { username: req.body.username });
-    const { username, password } = req.body;
+  logger.info('Performing strict authentication', { username: req.body.username });
+  const { username, password } = req.body;
 
-    if (!username) {
-        return res.status(400).json({ message: 'Username is required.' });
-    }
-    if (!password) {
-        return res.status(400).json({ message: 'Password is required.' });
-    }
+  if (!username) {
+    return res.status(400).json({ message: 'Username is required.' });
+  }
+  if (!password) {
+    return res.status(400).json({ message: 'Password is required.' });
+  }
 
-    return addCreatorToUser(
-        { username, password, requirePassword: true },
-        res,
-        true
-    ) as Promise<Response | void>;
+  return addCreatorToUser(
+    { username, password, requirePassword: true },
+    res,
+    true
+  ) as Promise<Response | void>;
 };
 
 /**
@@ -307,12 +354,12 @@ export const authenticate = async (req: Request, res: Response): Promise<Respons
  * @returns The signed refresh token.
  */
 export const generateRefreshToken = (payload: JWTPayload): string => {
-    // Refresh tokens typically don't have sensitive info beyond ID
-    const refreshPayload = {
-        userId: payload.userId,
-        type: 'refresh',
-    };
-    return jwt.sign(refreshPayload, safeSecret, { expiresIn: '7d' });
+  // Refresh tokens typically don't have sensitive info beyond ID
+  const refreshPayload = {
+    userId: payload.userId,
+    type: 'refresh',
+  };
+  return jwt.sign(refreshPayload, safeSecret, { expiresIn: '7d' });
 };
 
 /**
@@ -322,50 +369,50 @@ export const generateRefreshToken = (payload: JWTPayload): string => {
  * @returns A promise that resolves to the response.
  */
 export const refresh = async (req: Request, res: Response): Promise<Response | void> => {
-    const { refreshToken } = req.body;
+  const { refreshToken } = req.body;
 
-    if (!refreshToken) {
-        return res.status(400).json({ message: 'Refresh token is required.' });
+  if (!refreshToken) {
+    return res.status(400).json({ message: 'Refresh token is required.' });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, safeSecret) as { userId: string; type: string };
+
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ message: 'Invalid refresh token type.' });
     }
 
-    try {
-        const decoded = jwt.verify(refreshToken, safeSecret) as { userId: string; type: string };
-
-        if (decoded.type !== 'refresh') {
-            return res.status(401).json({ message: 'Invalid refresh token type.' });
-        }
-
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
-            select: {
-                id: true,
-                email: true,
-                username: true,
-                isAdmin: true,
-                accountStatus: true,
-            }
-        });
-        if (!user || user.accountStatus === 'disabled') {
-            return res.status(401).json({ message: 'User not found or account disabled.' });
-        }
-
-        const payload: JWTPayload = {
-            email: user.email,
-            username: user.username,
-            userId: user.id,
-            admin: user.isAdmin,
-        };
-
-        const accessToken = jwt.sign(payload, safeSecret, { expiresIn: '15m' });
-
-        return res.json({
-            accessToken,
-            refreshToken, // Sending same or could rotate
-        });
-    } catch {
-        // Log error if needed, or just suppress
-        return res.status(401).json({ message: 'Invalid or expired refresh token.' });
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        isAdmin: true,
+        accountStatus: true,
+      },
+    });
+    if (!user || user.accountStatus === 'disabled') {
+      return res.status(401).json({ message: 'User not found or account disabled.' });
     }
+
+    const payload: JWTPayload = {
+      email: user.email,
+      username: user.username,
+      userId: user.id,
+      admin: user.isAdmin,
+    };
+
+    const accessToken = jwt.sign(payload, safeSecret, { expiresIn: '15m' });
+
+    return res.json({
+      accessToken,
+      refreshToken, // Sending same or could rotate
+    });
+  } catch {
+    // Log error if needed, or just suppress
+    return res.status(401).json({ message: 'Invalid or expired refresh token.' });
+  }
 };
 
 /**
@@ -376,34 +423,51 @@ export const refresh = async (req: Request, res: Response): Promise<Response | v
  * @throws GraphQLError if token is invalid or expired.
  */
 export const verifyToken = async (authToken: string): Promise<JWTPayload> => {
-    // Remove 'Bearer ' prefix if present
-    const token = authToken.startsWith('Bearer ') ? authToken.substring(7) : authToken;
+  // Remove 'Bearer ' prefix if present
+  const token = authToken.startsWith('Bearer ') ? authToken.substring(7) : authToken;
 
-    try {
-        const decoded = jwt.verify(token, safeSecret) as JWTPayload;
-        return decoded;
-    } catch (err: unknown) {
-        const error = err as Error;
-        logger.error('Token verification failed', { error: error.message });
-
-        if (error.message === 'invalid issuer') {
-            throw new GraphQLError('Token issued cannot be used in this endpoint.', {
-                extensions: { code: 'UNAUTHENTICATED' },
-            });
-        }
-
-        if (error.name === 'JsonWebTokenError' || error.message === 'invalid signature') {
-            throw new GraphQLError(`Invalid access token: ${error.message}`, {
-                extensions: { code: 'UNAUTHENTICATED' },
-            });
-        } else if (error.name === 'TokenExpiredError') {
-            throw new GraphQLError('Access token has expired', {
-                extensions: { code: 'UNAUTHENTICATED' },
-            });
-        }
-
-        throw new GraphQLError('Authentication failed', {
-            extensions: { code: 'UNAUTHENTICATED' },
-        });
+  try {
+    const decoded = jwt.verify(token, safeSecret) as JWTPayload & {
+      type?: string;
+      purpose?: string;
+    };
+    // Invite-signup and refresh tokens must not authorize general GraphQL sessions.
+    if (
+      decoded.type === INVITE_SIGNUP_TOKEN_TYPE ||
+      decoded.type === 'refresh' ||
+      decoded.purpose === INVITE_SIGNUP_TOKEN_PURPOSE
+    ) {
+      throw new GraphQLError('Token issued cannot be used in this endpoint.', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
     }
+    return decoded;
+  } catch (err: unknown) {
+    if (err instanceof GraphQLError) {
+      throw err;
+    }
+
+    const error = err as Error;
+    logger.error('Token verification failed', { error: error.message });
+
+    if (error.message === 'invalid issuer') {
+      throw new GraphQLError('Token issued cannot be used in this endpoint.', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+
+    if (error.name === 'JsonWebTokenError' || error.message === 'invalid signature') {
+      throw new GraphQLError(`Invalid access token: ${error.message}`, {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    } else if (error.name === 'TokenExpiredError') {
+      throw new GraphQLError('Access token has expired', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+
+    throw new GraphQLError('Authentication failed', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
 };

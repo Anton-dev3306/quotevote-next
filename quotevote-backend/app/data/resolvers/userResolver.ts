@@ -1,4 +1,3 @@
-import * as bcrypt from 'bcryptjs';
 import { GraphQLError } from 'graphql';
 import { Prisma } from '@prisma/client';
 import { normalizeBio } from '../utils/bioValidation';
@@ -108,6 +107,14 @@ export const userResolver = {
         });
       }
 
+      // Password activation belongs to completeSignup / updateUserPassword only (#573).
+      if (input.password) {
+        throw new GraphQLError(
+          'Password cannot be set via updateUser. Use completeSignup or password reset.',
+          { extensions: { code: 'BAD_USER_INPUT' } }
+        );
+      }
+
       // Admins updating another user may only toggle contributorBadge.
       if (!isOwnProfile && isAdmin) {
         if (input.contributorBadge === undefined || input.contributorBadge === null) {
@@ -131,6 +138,21 @@ export const userResolver = {
           }
           throw err;
         }
+      }
+
+      // Pending invite accounts must complete via completeSignup, not profile edit.
+      const targetBeforeUpdate = await context.prisma.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, password: true, accountStatus: true },
+      });
+      if (
+        targetBeforeUpdate &&
+        !targetBeforeUpdate.password &&
+        targetBeforeUpdate.accountStatus === 'pending'
+      ) {
+        throw new GraphQLError('Pending invite accounts must complete signup via completeSignup', {
+          extensions: { code: 'FORBIDDEN' },
+        });
       }
 
       const updates: Prisma.UserUpdateInput = {};
@@ -196,11 +218,6 @@ export const userResolver = {
           });
         }
         updates.email = email;
-      }
-
-      if (input.password) {
-        const salt = await bcrypt.genSalt(10);
-        updates.password = await bcrypt.hash(input.password, salt);
       }
 
       if (input.avatar !== undefined && input.avatar !== null) {

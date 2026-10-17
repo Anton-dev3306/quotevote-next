@@ -63,8 +63,27 @@ model User {
   memberOfTags        String[]        @map("memberOfGroups") @db.ObjectId
   voteLog             VoteLog[]
   collections         Collection[]
+  termsAcceptances    TermsAcceptance[]
 
   @@index([accountStatus])
   @@index([botReports, lastBotReportDate])
   @@map("users")
+}
+
+// Append-only Terms of Service acceptance records (issue #573).
+// No mutable boolean on User — absence of a row means never accepted.
+model TermsAcceptance {
+  id           String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String                 @db.ObjectId
+  termsVersion String
+  termsHash    String
+  acceptedAt   DateTime               @default(now())
+  source       TermsAcceptanceSource
+  createdAt    DateTime               @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, termsVersion])
+  @@index([userId])
+  @@map("terms_acceptances")
 }

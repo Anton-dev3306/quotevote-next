@@ -53,11 +53,10 @@ async function startServer() {
   );
   app.use(express.json());
 
-  // Auth Routes
+  // Auth Routes — guest registration removed (#573: no consentless accounts)
   app.post('/auth/register', auth.register);
   app.post('/auth/login', auth.login);
   app.post('/auth/refresh', auth.refresh);
-  app.post('/auth/guest', auth.createGuestUser);
 
   // GraphQL Integration — context created via shared factory
   app.use(

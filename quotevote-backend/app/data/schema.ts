@@ -7,6 +7,7 @@ import { solidResolvers } from './resolvers/solidResolvers';
 import { postsResolver } from './resolvers/postsResolver';
 import { featuredPostsResolver } from './resolvers/featuredPostsResolver';
 import { userResolver } from './resolvers/userResolver';
+import { userInviteResolver } from './resolvers/userInviteResolver';
 import { tagResolver } from './resolvers/tagResolver';
 import { chatResolver } from './resolvers/chatResolver';
 import { rosterResolver } from './resolvers/rosterResolver';
@@ -36,6 +37,7 @@ export const schema = makeExecutableSchema({
     postsResolver,
     featuredPostsResolver,
     userResolver,
+    userInviteResolver,
     tagResolver,
     chatResolver,
     rosterResolver,
