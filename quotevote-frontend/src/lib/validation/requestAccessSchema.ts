@@ -5,18 +5,14 @@
 import { z } from 'zod';
 
 /**
- * Email validation pattern matching the original regex
- */
-const EMAIL_PATTERN = /^(("[\w-+\s]+")|([\w-+]+(?:\.[\w-+]+)*)|("[\w-+\s]+")([\w-+]+(?:\.[\w-+]+)*))(@((?:[\w-+]+\.)*\w[\w-+]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$)|(@\[?((25[0-5]\.|2[0-4][\d]\.|1[\d]{2}\.|[\d]{1,2}\.))((25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\.){2}(25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\]?$)/i;
-
-/**
- * Schema for email-only request access form
+ * Schema for email-only request access form.
+ * Uses Zod `.email()` (same as signup) so modern long TLDs like `.technology` are accepted.
  */
 export const requestAccessEmailSchema = z.object({
   email: z
     .string()
     .min(1, 'Email is required')
-    .regex(EMAIL_PATTERN, 'Please enter a valid email address'),
+    .email('Please enter a valid email address'),
 });
 
 export type RequestAccessEmailFormData = z.infer<typeof requestAccessEmailSchema>;
