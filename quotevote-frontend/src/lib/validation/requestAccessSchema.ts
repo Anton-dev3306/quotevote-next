@@ -5,21 +5,41 @@
 import { z } from 'zod';
 
 /**
- * Email validation pattern matching the original regex
+ * Shared invite email field: trims whitespace (autofill), then validates with Zod
+ * `.email()` so modern long TLDs like `.technology` are accepted (aligned with signup).
  */
-const EMAIL_PATTERN = /^(("[\w-+\s]+")|([\w-+]+(?:\.[\w-+]+)*)|("[\w-+\s]+")([\w-+]+(?:\.[\w-+]+)*))(@((?:[\w-+]+\.)*\w[\w-+]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$)|(@\[?((25[0-5]\.|2[0-4][\d]\.|1[\d]{2}\.|[\d]{1,2}\.))((25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\.){2}(25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\]?$)/i;
+export const requestAccessEmailField = z
+  .string()
+  .trim()
+  .min(1, 'Email is required')
+  .email('Please enter a valid email address');
 
 /**
- * Schema for email-only request access form
+ * Schema for email-only request access form.
  */
 export const requestAccessEmailSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'Email is required')
-    .regex(EMAIL_PATTERN, 'Please enter a valid email address'),
+  email: requestAccessEmailField,
 });
 
 export type RequestAccessEmailFormData = z.infer<typeof requestAccessEmailSchema>;
+
+export type ParseRequestAccessEmailResult =
+  | { success: true; email: string }
+  | { success: false; message: string };
+
+/**
+ * Validate and normalize a raw invite email. On success, `email` is trimmed.
+ */
+export function parseRequestAccessEmail(raw: string): ParseRequestAccessEmailResult {
+  const result = requestAccessEmailField.safeParse(raw);
+  if (!result.success) {
+    return {
+      success: false,
+      message: result.error.issues[0]?.message ?? 'Please enter a valid email address',
+    };
+  }
+  return { success: true, email: result.data };
+}
 
 /**
  * Schema for personal form (first step)
@@ -37,6 +57,7 @@ export const personalFormSchema = z.object({
     .max(20, 'Last Name should be less than twenty characters'),
   email: z
     .string()
+    .trim()
     .min(1, 'Email is required')
     .email('Invalid email address'),
 });
@@ -59,6 +80,7 @@ export const businessFormSchema = z.object({
     .max(20, 'Company Name should be less than twenty characters'),
   email: z
     .string()
+    .trim()
     .min(1, 'Email is required')
     .email('Invalid email address'),
 });

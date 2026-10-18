@@ -7,6 +7,7 @@ import { REQUEST_USER_ACCESS_MUTATION } from '@/graphql/mutations'
 import { GET_CHECK_DUPLICATE_EMAIL } from '@/graphql/queries'
 import { PersonalForm } from '@/components/RequestAccess/PersonalForm/PersonalForm'
 import { Globe } from '@/components/Icons'
+import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema'
 import Link from 'next/link'
 
 const BG_IMAGES = [
@@ -41,17 +42,17 @@ export function RequestAccessPageContent() {
   const onSubmit = async () => {
     setErrorMessage('')
 
-    const pattern =
-      /^(("[\w\-+\s]+")([\w\-+]+(?:\.[\w\-+]+)*)|("[\w\-+\s]+")([\w\-+]+(?:\.[\w\-+]+)*)|[\w\-+]+(?:\.[\w\-+]+)*)(@((?:[\w\-+]+\.)*\w[\w\-+]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$)|(@\[?((25[0-5]\.|2[0-4]\d\.|1\d{2}\.|[\d]{1,2}\.))((25[0-5]|2[0-4]\d|1\d{2}|[\d]{1,2})\.){2}(25[0-5]|2[0-4]\d|1\d{2}|[\d]{1,2})\]?$)/i
-    if (!pattern.test(userDetails)) {
-      setErrorMessage('This is not a valid email address')
+    const parsed = parseRequestAccessEmail(userDetails)
+    if (!parsed.success) {
+      setErrorMessage(parsed.message)
       return
     }
+    const { email } = parsed
 
     try {
       const { data } = await client.query({
         query: GET_CHECK_DUPLICATE_EMAIL,
-        variables: { email: userDetails },
+        variables: { email },
         fetchPolicy: 'network-only',
       })
       const hasDuplicate =
@@ -62,7 +63,7 @@ export function RequestAccessPageContent() {
       }
 
       await requestAccess({
-        variables: { requestUserAccessInput: { email: userDetails } },
+        variables: { requestUserAccessInput: { email } },
       })
       setRequestInviteSuccessful(true)
     } catch (err) {
