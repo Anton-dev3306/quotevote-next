@@ -133,10 +133,62 @@ describe('summarizeRoster', () => {
     );
     expect(s.expectedBackfill).toEqual({
       buddyAccepted: 1,
-      buddyPending: 1,
+      buddyPending: 0,
       userBlocks: 3,
-      skipped: { self: 1, orphan: 1, declined: 1, duplicatePair: 1, unknownStatus: 1 },
+      skipped: { self: 1, orphan: 1, declined: 1, unknownStatus: 1, pendingBlocked: 1 },
     });
+  });
+
+  it('ignores null created dates in the range', () => {
+    const s = summarizeRoster(
+      [
+        row({ userId: A, buddyId: B, created: null }),
+        row({ userId: A, buddyId: C, created: d2, status: 'pending' }),
+      ],
+      users,
+      []
+    );
+    expect(s.totalRows).toBe(2);
+    expect(s.created).toEqual({ oldest: d2.toISOString(), newest: d2.toISOString() });
+    const none = summarizeRoster([row({ userId: A, buddyId: B, created: null })], users, []);
+    expect(none.created).toEqual({ oldest: null, newest: null });
+  });
+
+  it('drops a pending request when the pair is blocked in a roster row', () => {
+    const s = summarizeRoster(
+      [
+        row({ userId: A, buddyId: B, status: 'pending' }),
+        row({ userId: B, buddyId: A, status: 'blocked' }),
+      ],
+      users,
+      []
+    );
+    expect(s.expectedBackfill.buddyPending).toBe(0);
+    expect(s.expectedBackfill.skipped).toEqual({ pendingBlocked: 1 });
+  });
+
+  it('drops a pending request when the pair is blocked only via blockedUserIds', () => {
+    const s = summarizeRoster([row({ userId: A, buddyId: B, status: 'pending' })], users, [
+      { id: B, blockedUserIds: [A] },
+    ]);
+    expect(s.expectedBackfill.buddyPending).toBe(0);
+    expect(s.expectedBackfill.skipped).toEqual({ pendingBlocked: 1 });
+  });
+
+  it('does not flag reciprocal accepted rows but flags an extra row as duplicates', () => {
+    const recip = summarizeRoster(
+      [row({ userId: A, buddyId: B }), row({ userId: B, buddyId: A })],
+      users,
+      []
+    );
+    expect(recip.expectedBackfill.skipped).toEqual({});
+    const three = summarizeRoster(
+      [row({ userId: A, buddyId: B }), row({ userId: B, buddyId: A, status: 'pending' })],
+      users,
+      []
+    );
+    expect(three.expectedBackfill.buddyAccepted).toBe(1);
+    expect(three.expectedBackfill.skipped).toEqual({ duplicatePair: 1 });
   });
 
   it('never includes ids in output', () => {

@@ -20,7 +20,8 @@ export function toPairKey(a: string, b: string): string {
   return sortedKey(a, b);
 }
 
-const range = (dates: Date[]): DateRange => {
+const range = (all: (Date | null)[]): DateRange => {
+  const dates = all.filter((d): d is Date => d != null);
   if (dates.length === 0) return { oldest: null, newest: null };
   const times = dates.map((d) => d.getTime());
   return {
@@ -127,14 +128,6 @@ export function summarizeRoster(
     }
   }
 
-  let buddyAccepted = 0;
-  let buddyPending = 0;
-  for (const p of pairBuddy.values()) {
-    if (p.accepted > 0) buddyAccepted += 1;
-    else buddyPending += 1;
-    for (let n = 0; n < p.accepted + p.pending - 1; n += 1) skip('duplicatePair');
-  }
-
   let usersWithEntries = 0;
   let totalEntries = 0;
   let pointingAtMissingUsers = 0;
@@ -155,6 +148,19 @@ export function summarizeRoster(
       if (blockEdges.has(edge)) coveredByBlockedRoster += 1;
       if (has(blocker) && blocker !== blocked) allBlocks.add(edge);
     }
+  }
+
+  let buddyAccepted = 0;
+  let buddyPending = 0;
+  for (const [pk, p] of pairBuddy) {
+    const [x, y] = pk.split(':');
+    const blocked = allBlocks.has(`${x}>${y}`) || allBlocks.has(`${y}>${x}`);
+    if (p.accepted > 0) buddyAccepted += 1;
+    else if (blocked) skip('pendingBlocked');
+    else buddyPending += 1;
+    // accepted pairs are normally two reciprocal rows (acceptBuddy writes both)
+    const expectedRows = p.accepted === 2 && p.pending === 0 ? 2 : 1;
+    for (let n = 0; n < p.accepted + p.pending - expectedRows; n += 1) skip('duplicatePair');
   }
 
   return {

@@ -6,7 +6,7 @@ model Roster {
   buddyId     String       @db.ObjectId
   status      RosterStatus @default(pending)
   initiatedBy String?      @db.ObjectId
-  created     DateTime     @default(now())
+  created     DateTime?    @default(now())
   updated     DateTime     @updatedAt
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt

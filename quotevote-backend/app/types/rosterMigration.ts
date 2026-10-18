@@ -3,7 +3,7 @@ export interface RosterAuditRow {
   buddyId: string;
   initiatedBy: string | null;
   status: string;
-  created: Date;
+  created: Date | null;
   updated: Date;
 }
 
