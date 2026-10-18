@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useQuery, useSubscription } from '@apollo/client/react'
 import { WifiOff } from 'lucide-react'
 import PostController from '@/components/Post/PostController'
+import PostUnavailable from '@/components/Post/PostUnavailable'
 import PostActionList from '@/components/PostActions/PostActionList'
 import PostChatSend from '@/components/PostChat/PostChatSend'
 import MobileDiscussionSplit from '@/components/Post/MobileDiscussionSplit'
@@ -49,11 +50,7 @@ export default function PostDetailPage(): React.ReactNode {
   const postId = params?.postId
 
   if (!postId) {
-    return (
-      <div className="flex items-center justify-center min-h-[40vh]">
-        <p className="text-muted-foreground">Post not found</p>
-      </div>
-    )
+    return <PostUnavailable />
   }
 
   return <PostLayout postId={postId} />
@@ -71,6 +68,13 @@ function PostLayout({ postId }: { postId: string }) {
 
   const setMobileDiscussionOpen = useAppStore((s) => s.setMobileDiscussionOpen)
   const setLinkedPassage = useAppStore((s) => s.setLinkedPassage)
+
+  // Same query as PostController and the discussion pane, so this shares their request.
+  const { data: postData, loading: postLoading } = useQuery<PostQueryData>(GET_POST, {
+    variables: { postId },
+    fetchPolicy: 'cache-first',
+  })
+  const postMissing = !postLoading && !!postData && !postData.post
   const setFocusedComment = useAppStore((s) => s.setFocusedComment)
 
   useEffect(() => {
@@ -153,6 +157,11 @@ function PostLayout({ postId }: { postId: string }) {
       onCountChange={setDiscussionCount}
     />
   )
+
+  // A deleted or missing post gets one explanatory state, not an empty discussion beside it.
+  if (postMissing) {
+    return <PostUnavailable />
+  }
 
   // SSR and hydration share this shell so matchMedia cannot swap the tree.
   // After mount, pick portrait-mobile split vs desktop/landscape columns.

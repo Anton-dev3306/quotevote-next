@@ -16,6 +16,8 @@ interface NotificationProps {
   pageView?: boolean;
   setOpenPopUp?: () => void;
   refetch?: () => void;
+  /** Called after a notification sends the user somewhere (e.g. to close the panel). */
+  onNavigate?: () => void;
 }
 
 export function Notification({
@@ -23,6 +25,7 @@ export function Notification({
   notifications,
   pageView = false,
   setOpenPopUp,
+  onNavigate,
 }: NotificationProps) {
   const router = useRouter();
   const { isMobile } = useResponsive();
@@ -70,7 +73,11 @@ export function Notification({
           </div>
         )}
         {!loading && (
-          <NotificationLists notifications={notifications} pageView={pageView} />
+          <NotificationLists
+            notifications={notifications}
+            pageView={pageView}
+            onNavigate={onNavigate}
+          />
         )}
       </div>
     </div>
