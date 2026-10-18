@@ -159,7 +159,7 @@ export const Mutation = `type Mutation {
   " Unblock a user (idempotent) "
   unblockUser(userId: String!): UserBlockStatus!
   
-  " Remove a buddy "
+  " Remove a buddy, or withdraw a pending request "
   removeBuddy(userId: String!): BuddyMutationResult!
 
   " Update typing status in chat room "

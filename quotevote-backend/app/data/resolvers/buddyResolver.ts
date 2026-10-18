@@ -106,9 +106,11 @@ export const buddyResolver = {
       const presenceMap = new Map(presences.map((p) => [p.userId, p]));
       return users.map((u) => {
         const p = presenceMap.get(u.id);
-        // Invisible users look offline to their buddies.
+        // Invisible users look offline to their buddies, with no status message.
         const presence = p
-          ? toPublicPresence({ ...p, status: p.status === 'invisible' ? 'offline' : p.status })
+          ? toPublicPresence(
+              p.status === 'invisible' ? { ...p, status: 'offline', statusMessage: null } : p
+            )
           : null;
         return { user: toBuddyUser(u), presence };
       });
@@ -200,7 +202,7 @@ export const buddyResolver = {
     ): Promise<BuddyMutationResult> => {
       const me = await requireTargetUser(context, userId);
       const { count } = await context.prisma.buddyRelationship.deleteMany({
-        where: { pairKey: toPairKey(me, userId), status: 'accepted' },
+        where: { pairKey: toPairKey(me, userId) },
       });
       if (count === 0) throw err('Buddy not found', 'NOT_FOUND');
       return { _id: userId, success: true };

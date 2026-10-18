@@ -148,15 +148,16 @@ describe('buddyResolver mutations', () => {
     expect(await code(declineBuddy({}, { requestId: REQ }, m.context))).toBe('NOT_FOUND');
   });
 
-  it('removeBuddy deletes the accepted pair', async () => {
+  it('removeBuddy deletes the pair whatever its status, so a pending request can be withdrawn', async () => {
     const { prisma, context } = mockContext();
     expect(await removeBuddy({}, { userId: OTHER }, context)).toEqual({
       _id: OTHER,
       success: true,
     });
     expect(prisma.buddyRelationship.deleteMany).toHaveBeenCalledWith({
-      where: { pairKey: toPairKey(ME, OTHER), status: 'accepted' },
+      where: { pairKey: toPairKey(ME, OTHER) },
     });
+    expect(prisma.buddyRelationship.deleteMany.mock.calls[0][0].where).not.toHaveProperty('status');
   });
 
   it('removeBuddy errors', async () => {
@@ -188,12 +189,19 @@ describe('buddyResolver queries', () => {
     m.prisma.buddyRelationship.findMany.mockResolvedValue(accepted);
     m.prisma.user.findMany.mockResolvedValue([user(OTHER), user(THIRD)]);
     m.prisma.presence.findMany.mockResolvedValue([
-      { id: 'p1', userId: OTHER, status: 'invisible', lastHeartbeat: new Date() },
+      {
+        id: 'p1',
+        userId: OTHER,
+        status: 'invisible',
+        statusMessage: 'busy',
+        lastHeartbeat: new Date(),
+      },
     ]);
     const list = await getBuddyList({}, {}, m.context);
     expect(list).toHaveLength(2);
     const a = list.find((b) => b.user._id === OTHER)!;
     expect(a.presence?.status).toBe('offline');
+    expect(a.presence?.statusMessage ?? null).toBeNull();
     expect(a.user).toEqual({ _id: OTHER, name: `n${OTHER}`, username: `u${OTHER}`, avatar: null });
     expect(list.find((b) => b.user._id === THIRD)!.presence).toBeNull();
     expect(m.prisma.user.findMany).toHaveBeenCalledTimes(1);
@@ -208,11 +216,12 @@ describe('buddyResolver queries', () => {
     m.prisma.buddyRelationship.findMany.mockResolvedValue([accepted[0]]);
     m.prisma.user.findMany.mockResolvedValue([user(ME)]);
     m.prisma.presence.findMany.mockResolvedValue([
-      { id: 'p', userId: ME, status: 'online', lastHeartbeat: new Date() },
+      { id: 'p', userId: ME, status: 'online', statusMessage: 'hi', lastHeartbeat: new Date() },
     ]);
     const list = await getBuddyList({}, {}, m.context);
     expect(list.map((b) => b.user._id)).toEqual([ME]);
     expect(list[0].presence?.status).toBe('online');
+    expect(list[0].presence?.statusMessage).toBe('hi');
   });
 
   it('getBuddyList hides blocked pairs (either direction) and shows them again once unblocked', async () => {
