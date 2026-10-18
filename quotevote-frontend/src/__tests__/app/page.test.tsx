@@ -10,14 +10,16 @@ import { render, screen } from '../utils/test-utils'
 import { PublicDirectoryContent } from '@/app/components/PublicDirectory/PublicDirectoryContent'
 import { AuthAwareHome } from '@/app/components/AuthAwareHome'
 import { useAppStore } from '@/store'
+import { useQuery } from '@apollo/client/react'
 
 const mockPush = jest.fn()
 const mockReplace = jest.fn()
+let mockSearch = ''
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
   usePathname: () => '/',
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }))
 
 jest.mock('@apollo/client/react', () => ({
@@ -78,13 +80,13 @@ describe('Public directory (`/`)', () => {
     expect(screen.getByTestId('directory-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('directory-search')).toHaveAttribute(
       'placeholder',
-      'Search quotes, topics, sources...'
+      'Search quotes, topics, sources… or use #hashtag'
     )
     // iOS Safari zooms focused inputs under 16px; text-base keeps mobile at 16px
     expect(screen.getByTestId('directory-search')).toHaveClass('text-base')
     expect(screen.getByTestId('filter-latest')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('filter-filters')).toBeInTheDocument()
-    expect(screen.getByTestId('filter-tag')).toBeInTheDocument()
+    expect(screen.queryByTestId('filter-tag')).not.toBeInTheDocument()
     expect(screen.getByTestId('filter-date')).toBeInTheDocument()
   })
 
@@ -164,6 +166,7 @@ describe('Public directory (`/`)', () => {
 describe('Authenticated directory (`/`)', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockSearch = ''
     useAppStore.getState().setUserData({
       _id: 'user-1',
       username: 'tester',
@@ -186,5 +189,18 @@ describe('Authenticated directory (`/`)', () => {
     )
     expect(scroll).toHaveClass('overflow-y-auto', 'md:overflow-visible')
     expect(scroll).not.toContainElement(screen.getByTestId('directory-toolbar'))
+  })
+
+  it('passes friendsOnly to the posts query when ?following=true', () => {
+    mockSearch = 'following=true'
+    render(<AuthAwareHome />)
+    const calls = (useQuery as unknown as jest.Mock).mock.calls
+    expect(calls.some(([, opts]) => opts?.variables?.friendsOnly === true)).toBe(true)
+  })
+
+  it('does not set friendsOnly without the param', () => {
+    render(<AuthAwareHome />)
+    const calls = (useQuery as unknown as jest.Mock).mock.calls
+    expect(calls.some(([, opts]) => opts?.variables?.friendsOnly === true)).toBe(false)
   })
 })
