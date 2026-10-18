@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type { GraphQLContext, UserBlockStatusResult } from '~/types/graphql';
 import { findBlockBetween, requireTargetUser } from '~/data/utils/userBlock';
 import { toPairKey } from '~/data/utils/rosterMigration';
@@ -31,16 +32,24 @@ export const userBlockResolver = {
       context: GraphQLContext
     ): Promise<UserBlockStatusResult> => {
       const me = await requireTargetUser(context, userId);
-      await context.prisma.$transaction([
-        context.prisma.userBlock.upsert({
-          where: { blockerId_blockedUserId: { blockerId: me, blockedUserId: userId } },
-          create: { blockerId: me, blockedUserId: userId },
-          update: {},
-        }),
-        context.prisma.buddyRelationship.deleteMany({
-          where: { pairKey: toPairKey(me, userId), status: 'pending' },
-        }),
-      ]);
+      try {
+        await context.prisma.$transaction([
+          context.prisma.userBlock.upsert({
+            where: { blockerId_blockedUserId: { blockerId: me, blockedUserId: userId } },
+            create: { blockerId: me, blockedUserId: userId },
+            update: {},
+          }),
+          context.prisma.buddyRelationship.deleteMany({
+            where: { pairKey: toPairKey(me, userId), status: 'pending' },
+          }),
+        ]);
+      } catch (err) {
+        // A concurrent blockUser for the same pair committed first, so the block is in place.
+        const raced =
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          (err.code === 'P2034' || err.code === 'P2002');
+        if (!raced) throw err;
+      }
       return status(context, me, userId);
     },
     unblockUser: async (

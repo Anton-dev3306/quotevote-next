@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { userBlockResolver } from '~/data/resolvers/userBlockResolver';
 import { toPairKey } from '~/data/utils/rosterMigration';
 import type { GraphQLContext } from '~/types/graphql';
@@ -40,6 +41,30 @@ describe('userBlockResolver', () => {
     expect(prisma.$transaction).toHaveBeenCalledWith(['upsert-op', 'buddy-op']);
     expect(result).toEqual({ userId: OTHER, blockedByMe: true, blockedMe: false });
     expect(Object.keys(result)).toHaveLength(3);
+  });
+
+  it.each(['P2034', 'P2002'])(
+    'blockUser treats concurrent %s conflict as already blocked',
+    async (code) => {
+      const { prisma, context } = mockContext(ME, [ME]);
+      prisma.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('race', { code, clientVersion: 'x' })
+      );
+      expect(await blockUser({}, { userId: OTHER }, context)).toEqual({
+        userId: OTHER,
+        blockedByMe: true,
+        blockedMe: false,
+      });
+    }
+  );
+
+  it.each([
+    ['P2025', new Prisma.PrismaClientKnownRequestError('x', { code: 'P2025', clientVersion: 'x' })],
+    ['plain Error', new Error('boom')],
+  ])('blockUser rethrows %s', async (_n, err) => {
+    const { prisma, context } = mockContext();
+    prisma.$transaction.mockRejectedValueOnce(err);
+    await expect(blockUser({}, { userId: OTHER }, context)).rejects.toBe(err);
   });
 
   it('blockUser pairKey is symmetric', async () => {
