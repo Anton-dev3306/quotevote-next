@@ -45,6 +45,8 @@ export interface UIState {
   sharedComment: string | null;
   /** True while the mobile Quote-page discussion split-screen is open. */
   mobileDiscussionOpen: boolean;
+  /** True while the Notifications panel (left on desktop, bottom sheet on mobile) is open. */
+  notificationsOpen: boolean;
   /** Quote-text range linked to the currently selected discussion comment. */
   linkedPassage: LinkedPassage | null;
   /** Passage chosen with Quote in the selection popup, waiting in the Discussion composer. */
