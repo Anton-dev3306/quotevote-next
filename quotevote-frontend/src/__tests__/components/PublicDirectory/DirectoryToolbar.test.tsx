@@ -5,6 +5,8 @@
 import { fireEvent, render, screen } from '../../utils/test-utils'
 import { DirectoryToolbar } from '@/app/components/PublicDirectory/DirectoryToolbar'
 import { useAppStore } from '@/store'
+import { useQuery } from '@apollo/client/react'
+import { GROUPS_QUERY } from '@/graphql/queries'
 
 const mockReplace = jest.fn()
 let mockSearch = ''
@@ -82,5 +84,41 @@ describe('DirectoryToolbar', () => {
       render(<DirectoryToolbar />)
       expect(screen.queryByRole('button', { name: /^Remove /i })).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('DirectoryToolbar search input', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockSearch = ''
+    ;(useQuery as unknown as jest.Mock).mockImplementation((doc: unknown) => ({
+      data:
+        doc === GROUPS_QUERY
+          ? { groups: [{ _id: 'g1', title: 'Politics', privacy: 'public' }] }
+          : undefined,
+      loading: false,
+      error: undefined,
+    }))
+  })
+
+  it('applies the tag filter when the input is a single #word naming a tag', () => {
+    render(<DirectoryToolbar />)
+    const input = screen.getByTestId('directory-search')
+    fireEvent.change(input, { target: { value: '#politics' } })
+    expect(mockReplace).toHaveBeenCalledWith('?group=g1', { scroll: false })
+    expect(mockReplace).not.toHaveBeenCalledWith(expect.stringContaining('q='), expect.anything())
+  })
+
+  it('keeps unknown #words and plain text as text search', () => {
+    render(<DirectoryToolbar />)
+    const input = screen.getByTestId('directory-search')
+    fireEvent.change(input, { target: { value: '#unknown' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+    expect(mockReplace).toHaveBeenLastCalledWith('?q=%23unknown', { scroll: false })
+  })
+
+  it('does not advertise @username search', () => {
+    render(<DirectoryToolbar />)
+    expect(screen.queryByText(/@username/)).not.toBeInTheDocument()
   })
 })

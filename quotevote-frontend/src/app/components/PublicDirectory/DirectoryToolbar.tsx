@@ -1,19 +1,24 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Calendar, Clock, ListFilter, Search as SearchIcon, Users } from 'lucide-react'
 import { useQuery } from '@apollo/client/react'
 import { useDebounce } from '@/hooks/useDebounce'
-import { GET_GROUP } from '@/graphql/queries'
+import { GET_GROUP, GROUPS_QUERY } from '@/graphql/queries'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import DateRangeFilter from '@/components/SearchContainer/DateRangeFilter'
 import ActiveFilters from '@/components/SearchContainer/ActiveFilters'
+import type { Group } from '@/types/components'
 
 type SortOrder = 'desc' | 'asc'
+
+interface GroupsQueryData {
+  groups: Group[]
+}
 
 interface GroupQueryData {
   group?: { _id: string; title: string }
@@ -56,6 +61,12 @@ export function DirectoryToolbar(): ReactElement {
     fetchPolicy: 'cache-first',
   })
 
+  const { data: groupsData } = useQuery<GroupsQueryData>(GROUPS_QUERY, {
+    variables: { limit: 100 },
+    errorPolicy: 'all',
+  })
+  const publicGroups = (groupsData?.groups ?? []).filter((g) => g.privacy !== 'private')
+
   const updateParams = useCallback(
     (updates: Record<string, string | null>) => {
       const params = new URLSearchParams(searchParams.toString())
@@ -70,11 +81,29 @@ export function DirectoryToolbar(): ReactElement {
     [router, searchParams]
   )
 
+  // A lone `#word` that names a tag applies the tag filter (same as the tag badges); anything else is text search.
+  const lastApplied = useRef(q)
+  const applySearch = useCallback(
+    (raw: string) => {
+      const text = raw.trim()
+      lastApplied.current = raw
+      const tag = /^#(\S+)$/.exec(text)?.[1]?.toLowerCase()
+      const group = tag ? publicGroups.find((g) => g.title.toLowerCase() === tag) : undefined
+      if (group) {
+        setSearchInput('')
+        updateParams({ group: group._id, q: null })
+      } else {
+        updateParams({ q: text || null })
+      }
+    },
+    [publicGroups, updateParams]
+  )
+
   // Keyed on the debounced input only: removing the search pill clears `q` in the URL,
   // and re-running on `q` would re-apply the stale debounced text.
   useEffect(() => {
-    if (debouncedSearch === q) return
-    updateParams({ q: debouncedSearch.trim() || null })
+    if (debouncedSearch === q || debouncedSearch === lastApplied.current) return
+    applySearch(debouncedSearch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch])
 
@@ -141,7 +170,7 @@ export function DirectoryToolbar(): ReactElement {
         role="search"
         onSubmit={(e) => {
           e.preventDefault()
-          updateParams({ q: searchInput.trim() || null })
+          applySearch(searchInput)
         }}
       >
         <label htmlFor="directory-search" className="sr-only">
@@ -164,7 +193,7 @@ export function DirectoryToolbar(): ReactElement {
           />
         </div>
         <p id="directory-search-tip" className="mt-1.5 px-3.5 text-xs text-muted-foreground">
-          Tip: use #hashtag to filter by tag, @username for people.
+          Tip: use #hashtag to filter by tag.
         </p>
       </form>
 

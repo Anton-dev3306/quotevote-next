@@ -57,6 +57,40 @@ describe('postsResolver', () => {
       expect(ctx.prisma.post.findMany).not.toHaveBeenCalled();
     });
 
+    describe('friendsOnly', () => {
+      const followedId = '507f1f77bcf86cd799439099';
+
+      it('restricts results to posts from followed users', async () => {
+        const ctx = mockContext({ _id: userId, _followingId: [followedId] } as unknown as GraphQLContext['user']);
+        (ctx.prisma.post.count as jest.Mock).mockResolvedValue(0);
+        (ctx.prisma.post.findMany as jest.Mock).mockResolvedValue([]);
+
+        await postsResolver.Query.posts(null, { friendsOnly: true }, ctx);
+
+        const where = (ctx.prisma.post.findMany as jest.Mock).mock.calls[0][0].where;
+        expect(where.AND).toContainEqual({ userId: { in: [followedId] } });
+      });
+
+      it('returns an empty page without querying when the viewer follows nobody', async () => {
+        const ctx = mockContext({ _id: userId, _followingId: [] } as unknown as GraphQLContext['user']);
+
+        const result = await postsResolver.Query.posts(null, { friendsOnly: true }, ctx);
+
+        expect(result.entities).toEqual([]);
+        expect(result.pagination.total_count).toBe(0);
+        expect(ctx.prisma.post.findMany).not.toHaveBeenCalled();
+      });
+
+      it('returns an empty page without querying for a signed-out caller', async () => {
+        const ctx = mockContext();
+
+        const result = await postsResolver.Query.posts(null, { friendsOnly: true }, ctx);
+
+        expect(result.entities).toEqual([]);
+        expect(ctx.prisma.post.findMany).not.toHaveBeenCalled();
+      });
+    });
+
     it('returns empty result early if a username search matches no users', async () => {
       const ctx = mockContext();
       (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([]);

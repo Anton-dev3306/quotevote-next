@@ -23,7 +23,7 @@ import type * as Common from '~/types/common';
 async function buildPostQuery(
   args: PostQueryArgs,
   prisma: GraphQLContext['prisma'],
-  viewerId: string | null = null
+  followingIds: readonly string[] = []
 ): Promise<{
   where: Prisma.PostWhereInput;
   orderBy: Prisma.PostOrderByWithRelationInput[];
@@ -125,14 +125,10 @@ async function buildPostQuery(
 
   // Following filter: only posts from users the signed-in user follows.
   if (args.friendsOnly) {
-    const viewer = viewerId
-      ? await prisma.user.findUnique({ where: { id: viewerId }, select: { followingIds: true } })
-      : null;
-    const followingIds = viewer?.followingIds ?? [];
     if (followingIds.length === 0) {
       return { where, orderBy, earlyEmpty: true, hashtags };
     }
-    andConditions.push({ userId: { in: followingIds } });
+    andConditions.push({ userId: { in: [...followingIds] } });
     where.AND = andConditions;
   }
 
@@ -159,7 +155,11 @@ export const postsResolver = {
       const limit = args.limit ?? 15;
       const offset = args.offset ?? 0;
 
-      const { where, orderBy, earlyEmpty, hashtags } = await buildPostQuery(args, context.prisma, context.userId);
+      const { where, orderBy, earlyEmpty, hashtags } = await buildPostQuery(
+        args,
+        context.prisma,
+        context.user?._followingId ?? []
+      );
 
       if (earlyEmpty) {
         return {
