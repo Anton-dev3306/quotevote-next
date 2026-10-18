@@ -27,7 +27,7 @@ import { Label } from '@/components/ui/label';
 
 import { REQUEST_USER_ACCESS_MUTATION } from '@/graphql/mutations';
 import { GET_CHECK_DUPLICATE_EMAIL } from '@/graphql/queries';
-import { requestAccessEmailSchema } from '@/lib/validation/requestAccessSchema';
+import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema';
 import { loginUser } from '@/lib/auth';
 import { useAppStore } from '@/store/useAppStore';
 import type { RequestInviteDialogProps } from '@/types/components';
@@ -61,19 +61,17 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
   const handleInviteSubmit = async () => {
     setError('');
 
-    const validationResult = requestAccessEmailSchema.safeParse({ email });
-
-    if (!validationResult.success) {
-      setError(
-        validationResult.error.issues[0]?.message || 'Please enter a valid email address'
-      );
+    const parsed = parseRequestAccessEmail(email);
+    if (!parsed.success) {
+      setError(parsed.message);
       return;
     }
+    const normalizedEmail = parsed.email;
 
     try {
       const checkDuplicate = await client.query({
         query: GET_CHECK_DUPLICATE_EMAIL,
-        variables: { email },
+        variables: { email: normalizedEmail },
         fetchPolicy: 'network-only',
       });
 
@@ -89,7 +87,7 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
       }
 
       await requestUserAccess({
-        variables: { requestUserAccessInput: { email } },
+        variables: { requestUserAccessInput: { email: normalizedEmail } },
       });
 
       setSubmitted(true);

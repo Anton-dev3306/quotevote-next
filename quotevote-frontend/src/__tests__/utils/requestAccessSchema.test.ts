@@ -1,7 +1,10 @@
 /**
- * Tests for request-access email validation (long TLDs).
+ * Tests for request-access email validation (long TLDs + trim).
  */
-import { requestAccessEmailSchema } from '@/lib/validation/requestAccessSchema'
+import {
+  parseRequestAccessEmail,
+  requestAccessEmailSchema,
+} from '@/lib/validation/requestAccessSchema'
 
 describe('requestAccessEmailSchema', () => {
   it('accepts common short TLDs', () => {
@@ -25,5 +28,22 @@ describe('requestAccessEmailSchema', () => {
   it('rejects clearly invalid addresses', () => {
     expect(requestAccessEmailSchema.safeParse({ email: 'not-an-email' }).success).toBe(false)
     expect(requestAccessEmailSchema.safeParse({ email: 'missing@tld' }).success).toBe(false)
+  })
+})
+
+describe('parseRequestAccessEmail', () => {
+  it('trims whitespace and returns normalized email (review feedback)', () => {
+    const result = parseRequestAccessEmail('  test@example.technology  ')
+    expect(result).toEqual({ success: true, email: 'test@example.technology' })
+  })
+
+  it('rejects whitespace-only input', () => {
+    const result = parseRequestAccessEmail('   ')
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts .co.uk style domains', () => {
+    const result = parseRequestAccessEmail('user@example.co.uk')
+    expect(result).toEqual({ success: true, email: 'user@example.co.uk' })
   })
 })
