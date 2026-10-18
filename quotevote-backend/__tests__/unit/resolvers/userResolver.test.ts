@@ -518,9 +518,9 @@ describe('userResolver', () => {
       created,
       createdAt: created,
       updatedAt: created,
-      reporter: { id: otherId, username: 'bob', name: 'Bob' },
-      reportedUser: { id: targetId, username: 'carol', name: 'Carol' },
     };
+    const reporter = { id: otherId, username: 'bob', name: 'Bob' };
+    const reportedUser = { id: targetId, username: 'carol', name: 'Carol' };
 
     it('requires authentication', async () => {
       await expect(
@@ -559,7 +559,7 @@ describe('userResolver', () => {
       expect(ctx.prisma.userReport.findMany).not.toHaveBeenCalled();
     });
 
-    it('queries with a status filter, a cap and public-only user fields', async () => {
+    it('queries with a status filter and a cap', async () => {
       const ctx = mockContext({ admin: true });
       (ctx.prisma.userReport.findMany as jest.Mock).mockResolvedValue([]);
 
@@ -569,18 +569,20 @@ describe('userResolver', () => {
         where: { reportedUserId: targetId, status: 'pending' },
         orderBy: { createdAt: 'desc' },
         take: 100,
-        include: {
-          reporter: { select: PUBLIC_USER_SELECT },
-          reportedUser: { select: PUBLIC_USER_SELECT },
-        },
       });
     });
 
     it('maps Prisma fields to the GraphQL shape', async () => {
       const ctx = mockContext({ admin: true });
       (ctx.prisma.userReport.findMany as jest.Mock).mockResolvedValue([record]);
-
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([reporter, reportedUser]);
+    
       const [report] = await userResolver.Query.getUserReports(null, { userId: targetId }, ctx);
+
+      expect(ctx.prisma.user.findMany).toHaveBeenCalledWith({
+        where: { id: { in: [otherId, targetId] } },
+        select: PUBLIC_USER_SELECT,
+      });
 
       expect(report).toMatchObject({
         _id: 'report-1',
@@ -592,6 +594,18 @@ describe('userResolver', () => {
         updatedAt: created.toISOString(),
       });
       expect(report.reporter).toMatchObject({ _id: otherId, username: 'bob' });
+      expect(report.reportedUser).toMatchObject({ _id: targetId, username: 'carol' });
+    });
+
+      it('returns null for a reporter whose account no longer exists', async () => {
+      const ctx = mockContext({ admin: true });
+      (ctx.prisma.userReport.findMany as jest.Mock).mockResolvedValue([record]);
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([reportedUser]);
+
+      const [report] = await userResolver.Query.getUserReports(null, { userId: targetId }, ctx);
+
+      expect(report.reporter).toBeNull();
+      expect(report.reportedUser).toMatchObject({ username: 'carol' });
     });
 
     it('never returns null timestamps for legacy records', async () => {
@@ -599,6 +613,7 @@ describe('userResolver', () => {
       (ctx.prisma.userReport.findMany as jest.Mock).mockResolvedValue([
         { ...record, createdAt: null, updatedAt: null },
       ]);
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([]);
 
       const [report] = await userResolver.Query.getUserReports(null, { userId: targetId }, ctx);
 

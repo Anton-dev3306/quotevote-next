@@ -132,11 +132,18 @@ export const userResolver = {
         },
         orderBy: { createdAt: 'desc' },
         take: USER_REPORTS_LIMIT,
-        include: {
-          reporter: { select: PUBLIC_USER_SELECT },
-          reportedUser: { select: PUBLIC_USER_SELECT },
-        },
       });
+
+      // Loaded separately so a report whose account no longer exists
+      // resolves to null instead of failing the whole list.
+      const userIds = [...new Set(reports.flatMap((r) => [r.reporterId, r.reportedUserId]))];
+      const users = userIds.length
+        ? await context.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: PUBLIC_USER_SELECT,
+          })
+        : [];
+      const usersById = new Map(users.map((u) => [u.id, toPublicUser(u as PrismaUserRecord)]));
 
       return reports.map((report) => {
         const createdAt = report.createdAt ?? report.created ?? undefined;
@@ -149,8 +156,8 @@ export const userResolver = {
           status: report.status,
           severity: report.severity,
           adminNotes: report.adminNotes,
-          reporter: toPublicUser(report.reporter as PrismaUserRecord),
-          reportedUser: toPublicUser(report.reportedUser as PrismaUserRecord),
+          reporter: usersById.get(report.reporterId) ?? null,
+          reportedUser: usersById.get(report.reportedUserId) ?? null,
           createdAt: toIsoDateString(createdAt),
           updatedAt: toIsoDateString(report.updatedAt ?? createdAt),
         };
