@@ -165,7 +165,7 @@ const UserSearchResults: FC<UserSearchResultsProps> = ({ searchQuery }) => {
             </div>
 
             {relation?.type === 'buddy' && (
-              <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#52b274]">
+              <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#2f6f4a] dark:text-[#7fdc9c]">
                 <UserCheck className="h-3.5 w-3.5" />
                 Buddy
               </span>
@@ -191,7 +191,7 @@ const UserSearchResults: FC<UserSearchResultsProps> = ({ searchQuery }) => {
                   (relation as { type: 'pending_received'; rosterId: string })
                     .rosterId
                 }
-                className="ml-auto bg-[#52b274] text-white hover:bg-[#4a9e63]"
+                className="ml-auto min-h-8 bg-[#2f7a4c] text-white hover:bg-[#276640]"
               >
                 {acceptingRosterId ===
                 (relation as { type: 'pending_received'; rosterId: string })
@@ -211,7 +211,8 @@ const UserSearchResults: FC<UserSearchResultsProps> = ({ searchQuery }) => {
                 size="sm"
                 onClick={() => handleAddBuddy(user._id)}
                 disabled={addingUserId === user._id}
-                className="ml-auto bg-[#52b274] text-white hover:bg-[#4a9e63] disabled:opacity-60"
+                aria-label={`Add ${user.name || user.username} as a buddy`}
+                className="ml-auto min-h-8 bg-[#2f7a4c] text-white hover:bg-[#276640] disabled:opacity-60"
               >
                 {addingUserId === user._id ? (
                   <Loader2 className="h-3 w-3 animate-spin" />

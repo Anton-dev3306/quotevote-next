@@ -1,30 +1,17 @@
 "use client";
 
-import type { PresenceStatus, PresenceIconProps } from '@/types/chat';
-
-const statusClasses: Record<PresenceStatus, string> = {
-  online:
-    'bg-[#52b274] shadow-[0_0_0_2px_rgba(255,255,255,1),inset_0_0_0_1px_rgba(0,0,0,0.1)]',
-  away:
-    'bg-amber-400 shadow-[0_0_0_2px_rgba(255,255,255,1),inset_0_0_0_1px_rgba(0,0,0,0.1)]',
-  dnd:
-    'bg-red-500 shadow-[0_0_0_2px_rgba(255,255,255,1),inset_0_0_0_1px_rgba(0,0,0,0.1)]',
-  offline:
-    'bg-zinc-500 shadow-[0_0_0_2px_rgba(255,255,255,1),inset_0_0_0_1px_rgba(0,0,0,0.1)]',
-  invisible:
-    'bg-zinc-500 shadow-[0_0_0_2px_rgba(255,255,255,1),inset_0_0_0_1px_rgba(0,0,0,0.1)]',
-};
+import type { PresenceIconProps } from '@/types/chat';
+import { PRESENCE_DOT_CLASS } from '@/lib/constants/presence';
 
 const PresenceIcon = ({ status, className }: PresenceIconProps) => {
-  const classes = statusClasses[status] ?? statusClasses.offline;
+  const classes = PRESENCE_DOT_CLASS[status] ?? PRESENCE_DOT_CLASS.offline;
 
   return (
     <span
-      className={`inline-block h-3 w-3 rounded-full ${classes} ${className ?? ''}`.trim()}
+      className={`inline-block h-3 w-3 shrink-0 rounded-full ${classes} ${className ?? ''}`.trim()}
       aria-hidden="true"
     />
   );
 };
 
 export default PresenceIcon;
-
