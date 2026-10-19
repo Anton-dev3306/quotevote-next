@@ -52,7 +52,7 @@ export function Pagination({
   if (totalPages <= 1) return null;
 
   const btnBase =
-    'flex items-center justify-center rounded-lg border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium';
+    'flex items-center justify-center rounded-lg border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-background';
   const btnMd = cn(btnBase, 'size-8 sm:size-9 shrink-0');
 
   return (
@@ -62,7 +62,7 @@ export function Pagination({
       className="flex flex-col items-center gap-4 w-full min-w-0 max-w-full overflow-x-hidden px-4 pt-6 pb-8 sm:pt-7 sm:pb-10"
     >
       {showPageInfo && (
-        <p className="text-xs text-muted-foreground tabular-nums text-center">
+        <p className="text-xs text-foreground/75 tabular-nums text-center">
           {startItem}–{endItem} of {totalCount.toLocaleString()} posts
         </p>
       )}
@@ -117,7 +117,8 @@ export function Pagination({
             className={cn(
               btnMd,
               page === currentPage
-                ? 'bg-[#52b274] border-[#52b274] text-white hover:bg-[#3d9659] hover:border-[#3d9659]'
+                ? // White on the brand green is 2.6:1; this darker green keeps the number readable (5.2:1).
+                  'bg-[#2f7a4c] border-[#2f7a4c] text-white hover:bg-[#276640] hover:border-[#276640]'
                 : 'hover:bg-muted'
             )}
           >
@@ -166,7 +167,7 @@ export function Pagination({
         )}
       </div>
 
-      <p className="sm:hidden text-xs text-muted-foreground pt-1">
+      <p className="sm:hidden text-xs text-foreground/75 pt-1">
         Page {currentPage} of {totalPages}
       </p>
     </nav>
@@ -193,7 +194,7 @@ export function PaginationCompact({
         type="button"
         onClick={() => go(currentPage - 1)}
         disabled={currentPage === 1 || disabled}
-        className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex min-h-9 items-center gap-1 rounded-md px-2 -mx-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]"
       >
         <ChevronLeft className="size-4" />
         Prev
@@ -205,7 +206,7 @@ export function PaginationCompact({
         type="button"
         onClick={() => go(currentPage + 1)}
         disabled={currentPage === totalPages || disabled}
-        className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex min-h-9 items-center gap-1 rounded-md px-2 -mx-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]"
       >
         Next
         <ChevronRight className="size-4" />

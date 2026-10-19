@@ -54,6 +54,14 @@ export function DirectoryToolbar(): ReactElement {
   const [searchInput, setSearchInput] = useState(q)
   const debouncedSearch = useDebounce(searchInput, 300)
 
+  // When the search is cleared from outside the box (the empty results' "Clear search and
+  // filters"), empty the box too. Only clearing is synced, so typing is never overwritten.
+  const [prevQ, setPrevQ] = useState(q)
+  if (q !== prevQ) {
+    setPrevQ(q)
+    if (!q && searchInput) setSearchInput('')
+  }
+
   const { data: groupData } = useQuery<GroupQueryData>(GET_GROUP, {
     variables: { groupId },
     skip: !groupId,

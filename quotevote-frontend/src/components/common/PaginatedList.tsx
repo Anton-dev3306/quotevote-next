@@ -110,7 +110,7 @@ export function PaginatedList<T = unknown>({
               </p>
               {onRefresh && (
                 <Button
-                  onClick={onRefresh}
+                  onClick={() => onRefresh()}
                   className="mt-4 bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90"
                 >
                   Try Again
