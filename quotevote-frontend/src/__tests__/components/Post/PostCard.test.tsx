@@ -4,14 +4,14 @@
  * Basic tests for the PostCard component
  */
 
-import { act, fireEvent, render, screen, waitFor } from '../../utils/test-utils'
+import { fireEvent, render, screen } from '../../utils/test-utils'
 import PostCard from '../../../components/Post/PostCard'
-import { APPROVE_POST } from '@/graphql/mutations'
 import type { PostCardProps } from '@/types/post'
 
 // Mock useRouter
+const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }))
 
 // Mock Zustand store — selector-aware so the component reads the right slices.
@@ -53,8 +53,11 @@ jest.mock('@apollo/client/react', () => ({
   useMutation: jest.fn(() => [jest.fn(), { loading: false }]),
 }))
 
-const { useMutation: mockUseMutation } = jest.requireMock('@apollo/client/react') as {
+const { useMutation: mockUseMutation, useQuery: mockUseQuery } = jest.requireMock(
+  '@apollo/client/react'
+) as {
   useMutation: jest.Mock
+  useQuery: jest.Mock
 }
 
 describe('PostCard Component', () => {
@@ -86,60 +89,79 @@ describe('PostCard Component', () => {
     mockUseMutation.mockImplementation(() => [jest.fn(), { loading: false }])
   })
 
-  it('reconciles the selected Support state from the completed mutation response', async () => {
-    type ApprovePostResult = {
-      data: {
-        approvePost: {
-          _id: string
-          approvedBy: string[]
-          rejectedBy: string[]
-        }
-      }
-    }
-    let resolveApprovePost!: (result: ApprovePostResult) => void
-    const approvePost = jest.fn(
-      () =>
-        new Promise<ApprovePostResult>((resolve) => {
-          resolveApprovePost = resolve
-        })
-    )
+  describe('Search result cards (#528)', () => {
+    const tagged = { ...mockPostCardProps, url: '/post/qa/test/post1', groupId: 'group-qa' }
 
-    __setMockUserData({ _id: 'current-user' })
-    mockUseMutation.mockImplementation((mutation) => {
-      if (mutation === APPROVE_POST) return [approvePost, { loading: false }]
-      return [jest.fn(), { loading: false }]
+    beforeEach(() => {
+      mockUseQuery.mockImplementation(() => ({
+        data: { group: { _id: 'group-qa', title: 'QA' } },
+        loading: false,
+        error: undefined,
+      }))
     })
 
-    render(<PostCard {...mockPostCardProps} />)
-
-    expect(screen.getByRole('button', { name: 'Support this post' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Support this post' }))
-
-    expect(screen.getByRole('button', { name: 'Remove support' })).toBeInTheDocument()
-    expect(approvePost).toHaveBeenCalledWith({
-      variables: {
-        postId: 'post1',
-        userId: 'current-user',
-        remove: false,
-      },
+    afterEach(() => {
+      mockUseQuery.mockImplementation(() => ({ data: undefined, loading: false, error: undefined }))
+      window.history.replaceState(null, '', '/')
     })
 
-    await act(async () => {
-      resolveApprovePost({
-        data: {
-          approvePost: {
-            _id: 'post1',
-            // Intentionally differs from the optimistic addition to prove the response wins.
-            approvedBy: [],
-            rejectedBy: [],
-          },
-        },
+    it('has no voting controls', () => {
+      render(<PostCard {...tagged} approvedBy={['a']} rejectedBy={['b']} />)
+
+      expect(screen.queryByRole('button', { name: /support this post/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /disagree with this post/i })).not.toBeInTheDocument()
+    })
+
+    it('shows the tag before the title as a labelled filter', () => {
+      render(<PostCard {...tagged} />)
+
+      const tag = screen.getByRole('button', { name: 'Show posts tagged #QA' })
+      const title = screen.getByRole('heading', { name: 'Test Post Title' })
+      expect(tag.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('applies the tag filter and keeps the current search, without opening the post', () => {
+      window.history.replaceState(null, '', '/?q=civic&page=3')
+      render(<PostCard {...tagged} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Show posts tagged #QA' }))
+
+      expect(mockPush).toHaveBeenCalledTimes(1)
+      expect(mockPush).toHaveBeenCalledWith('/?q=civic&group=group-qa')
+    })
+
+    it('starts a fresh tag filter when used away from the home page', () => {
+      window.history.replaceState(null, '', '/profile/alice')
+      render(<PostCard {...tagged} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Show posts tagged #QA' }))
+      expect(mockPush).toHaveBeenCalledWith('/?group=group-qa')
+    })
+
+    it('opens the post from the rest of the card, with the mouse or the keyboard', () => {
+      render(<PostCard {...tagged} />)
+
+      fireEvent.click(screen.getByText('This is the post content.'))
+      expect(mockPush).toHaveBeenLastCalledWith('/post/qa/test/post1')
+
+      fireEvent.keyDown(screen.getByTestId('post-card'), { key: 'Enter' })
+      expect(mockPush).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps Enter on the tag from opening the post', () => {
+      render(<PostCard {...tagged} />)
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Show posts tagged #QA' }), {
+        key: 'Enter',
       })
+      expect(mockPush).not.toHaveBeenCalled()
     })
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Support this post' })).toBeInTheDocument()
+    it('shows author, time and activity together in the footer', () => {
+      render(<PostCard {...tagged} comments={[{ _id: 'c1', created: '2024-01-01', userId: 'u1' }]} />)
+
+      expect(screen.getByTestId('post-card-interactions')).toHaveTextContent('1 interaction')
+      expect(screen.getByText('testuser')).toBeInTheDocument()
     })
   })
 
@@ -263,7 +285,7 @@ describe('PostCard Component', () => {
       expect(screen.getByText('Test Post Title')).toBeInTheDocument()
     })
 
-    it('keeps votes, interaction count, and source attribution', () => {
+    it('keeps the interaction count and source attribution', () => {
       render(
         <PostCard
           {...mockPostCardProps}
@@ -274,8 +296,6 @@ describe('PostCard Component', () => {
         />
       )
 
-      expect(screen.getByRole('button', { name: 'Support this post' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Disagree with this post' })).toBeInTheDocument()
       expect(screen.getByText(/1 interaction/)).toBeInTheDocument()
       expect(screen.getByText('Source: arxiv.org')).toBeInTheDocument()
       expect(screen.getByText('— Ada Lovelace')).toBeInTheDocument()

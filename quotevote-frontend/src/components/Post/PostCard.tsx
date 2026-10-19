@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, memo, useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { isEmpty } from 'lodash'
 import moment from 'moment'
 import { useQuery, useMutation } from '@apollo/client/react'
-import { ExternalLink, Bookmark, Share2 } from 'lucide-react'
+import { ArrowRight, Bookmark, ExternalLink, Hash, MessagesSquare, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDomain, toAppPostUrl, toAbsolutePostUrl } from '@/lib/utils/sanitizeUrl'
 import { useAppStore } from '@/store'
 import { GET_GROUP } from '@/graphql/queries'
-import { UPDATE_POST_BOOKMARK, APPROVE_POST, REJECT_POST } from '@/graphql/mutations'
+import { UPDATE_POST_BOOKMARK } from '@/graphql/mutations'
 import { toast } from 'sonner'
 import getTopPostsVoteHighlights from '@/lib/utils/getTopPostsVoteHighlights'
 import useGuestGuard from '@/hooks/useGuestGuard'
@@ -20,24 +20,9 @@ import type { PostCardProps } from '@/types/post'
 import { STANDARD_POST_CARD_THEME } from '@/lib/constants/postCardTheme'
 import { announceBookmarkChange } from '@/lib/utils/bookmarkFeedback'
 
-// Standard post cards are always blue. Vote state is communicated by the
-// up/down controls, not the card chrome. Green/red belong to profile activity
+// Standard post cards are always blue. Green/red belong to profile activity
 // cards (see ActivityCard + getCardBackgroundColor).
 const CARD_THEME = STANDARD_POST_CARD_THEME
-
-type VoteStateMutationPost = {
-  _id: string
-  approvedBy?: string[]
-  rejectedBy?: string[]
-}
-
-type ApprovePostMutationData = {
-  approvePost?: VoteStateMutationPost
-}
-
-type RejectPostMutationData = {
-  rejectPost?: VoteStateMutationPost
-}
 
 function stringLimit(text: string, limit: number): string {
   if (!text || text.length <= limit) return text
@@ -74,31 +59,8 @@ function PostCardComponent({
   ) as string | undefined
 
   const [updateBookmark] = useMutation(UPDATE_POST_BOOKMARK)
-  const [approvePost, { loading: approvingPost }] =
-    useMutation<ApprovePostMutationData>(APPROVE_POST)
-  const [rejectPost, { loading: rejectingPost }] =
-    useMutation<RejectPostMutationData>(REJECT_POST)
-
-  // Local optimistic state — updates immediately on vote so color reflects right away
-  const [localApprovedBy, setLocalApprovedBy] = useState<string[]>(() => approvedBy || [])
-  const [localRejectedBy, setLocalRejectedBy] = useState<string[]>(() => rejectedBy || [])
-
-  // Sync when server data refreshes — updating state during render is the React-recommended
-  // pattern for deriving state from props without triggering a cascading effect cycle.
-  const [prevApprovedBy, setPrevApprovedBy] = useState(approvedBy)
-  const [prevRejectedBy, setPrevRejectedBy] = useState(rejectedBy)
-  if (prevApprovedBy !== approvedBy) {
-    setPrevApprovedBy(approvedBy)
-    setLocalApprovedBy(approvedBy || [])
-  }
-  if (prevRejectedBy !== rejectedBy) {
-    setPrevRejectedBy(rejectedBy)
-    setLocalRejectedBy(rejectedBy || [])
-  }
 
   const isBookmarked = userId ? bookmarkedBy.includes(userId) : false
-  const hasApproved = userId ? localApprovedBy.includes(userId) : false
-  const hasRejected = userId ? localRejectedBy.includes(userId) : false
 
   const handleBookmark = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -124,62 +86,6 @@ function PostCardComponent({
       toast.success('Link copied!')
     } catch {
       toast.error('Failed to copy link')
-    }
-  }
-
-  const handleApprove = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!guestGuard()) return
-    if (!userId) return
-    // Optimistic update
-    if (hasApproved) {
-      setLocalApprovedBy((prev) => prev.filter((id) => id !== userId))
-    } else {
-      setLocalApprovedBy((prev) => [...prev, userId])
-      setLocalRejectedBy((prev) => prev.filter((id) => id !== userId))
-    }
-    try {
-      const { data } = await approvePost({
-        variables: { postId: _id, userId, remove: hasApproved },
-      })
-      const updatedPost = data?.approvePost
-      if (updatedPost) {
-        // The optimistic update is only immediate feedback; the completed mutation is authoritative.
-        setLocalApprovedBy(updatedPost.approvedBy || [])
-        setLocalRejectedBy(updatedPost.rejectedBy || [])
-      }
-    } catch {
-      setLocalApprovedBy(approvedBy || [])
-      setLocalRejectedBy(rejectedBy || [])
-      toast.error('Failed to update vote')
-    }
-  }
-
-  const handleReject = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!guestGuard()) return
-    if (!userId) return
-    // Optimistic update
-    if (hasRejected) {
-      setLocalRejectedBy((prev) => prev.filter((id) => id !== userId))
-    } else {
-      setLocalRejectedBy((prev) => [...prev, userId])
-      setLocalApprovedBy((prev) => prev.filter((id) => id !== userId))
-    }
-    try {
-      const { data } = await rejectPost({
-        variables: { postId: _id, userId, remove: hasRejected },
-      })
-      const updatedPost = data?.rejectPost
-      if (updatedPost) {
-        // Reconcile both arrays because rejecting can also remove an existing approval.
-        setLocalApprovedBy(updatedPost.approvedBy || [])
-        setLocalRejectedBy(updatedPost.rejectedBy || [])
-      }
-    } catch {
-      setLocalApprovedBy(approvedBy || [])
-      setLocalRejectedBy(rejectedBy || [])
-      toast.error('Failed to update vote')
     }
   }
 
@@ -248,9 +154,20 @@ function PostCardComponent({
   // (display name, falling back to username) so an unset avatar looks
   // identical across the post card, profile and messages.
   const avatarSeed = creator?.name || username
-  const upvoteCount = localApprovedBy.length
-  const downvoteCount = localRejectedBy.length
+  const tagTitle = groupId && groupData?.group ? groupData.group.title : null
 
+  // Opens the home results with this tag applied, keeping the current search,
+  // date, sort and Following filters when already on the home page.
+  const handleTagClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!groupId) return
+    const params = new URLSearchParams(
+      window.location.pathname === '/' ? window.location.search : ''
+    )
+    params.set('group', groupId)
+    params.delete('page')
+    router.push(`/?${params.toString()}`)
+  }
 
   const formattedDate = useMemo(
     () =>
@@ -270,7 +187,11 @@ function PostCardComponent({
       data-testid="post-card"
       data-post-title={title || ''}
       data-compact={compact ? 'true' : undefined}
-      className={cn('group/card rounded-[7px] cursor-pointer overflow-hidden bg-card')}
+      className={cn(
+        'group/card rounded-[7px] cursor-pointer overflow-hidden bg-card',
+        // An outline, not a ring: the card's inline box-shadow would hide a ring.
+        'focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#52b274]'
+      )}
       style={{
         border: `2px solid ${CARD_THEME.borderColor}`,
         borderBottom: `8px solid ${CARD_THEME.borderColor}`,
@@ -297,141 +218,89 @@ function PostCardComponent({
       aria-label={title || 'Post'}
       data-sentiment="neutral"
     >
-      {/* ── Vote + interactions row ── */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-border/30">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <button
-            type="button"
-            onClick={handleApprove}
-            disabled={approvingPost || rejectingPost}
-            aria-label={hasApproved ? 'Remove support' : 'Support this post'}
-            className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded text-sm font-semibold transition-colors disabled:opacity-60',
-              hasApproved
-                ? 'bg-[#52b274] text-white'
-                : 'bg-muted/50 text-foreground hover:bg-[#52b274]/15 hover:text-[#52b274]'
-            )}
-          >
-            <span className={cn('font-bold', hasApproved ? 'text-white' : 'text-[#52b274]')}>↑</span>
-            <span className="tabular-nums">{upvoteCount}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleReject}
-            disabled={approvingPost || rejectingPost}
-            aria-label={hasRejected ? 'Remove disagreement' : 'Disagree with this post'}
-            className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded text-sm font-semibold transition-colors disabled:opacity-60',
-              hasRejected
-                ? 'bg-[#ff6060] text-white'
-                : 'bg-muted/50 text-foreground hover:bg-[#ff6060]/15 hover:text-[#ff6060]'
-            )}
-          >
-            <span className={cn('font-bold', hasRejected ? 'text-white' : 'text-[#ff6060]')}>↓</span>
-            <span className="tabular-nums">{downvoteCount}</span>
-          </button>
-          {!compact && (
-            <span className="text-xs text-muted-foreground px-2 py-0.5 rounded bg-muted/30">
-              {interactionCount} interaction{interactionCount !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-
-        {compact ? (
-          <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted/40 shrink-0">
-            {interactionCount} interaction{interactionCount !== 1 ? 's' : ''}
-          </span>
-        ) : (
-          <div
-            className="flex items-center gap-0.5"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className={cn(
-                'p-1.5 rounded transition-colors',
-                isBookmarked
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-muted-foreground/60 hover:text-amber-600 hover:bg-amber-500/10'
-              )}
-              onClick={handleBookmark}
-              aria-label={isBookmarked ? 'Remove saved post' : 'Save post'}
-              aria-pressed={isBookmarked}
-            >
-              <Bookmark className="size-4" fill={isBookmarked ? 'currentColor' : 'none'} />
-            </button>
-            <button
-              type="button"
-              className="p-1.5 rounded text-muted-foreground/60 hover:text-[#52b274] hover:bg-[#52b274]/10 transition-colors"
-              onClick={handleShare}
-              aria-label="Share"
-            >
-              <Share2 className="size-4" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Main content ── */}
       <div className={cn('px-4 pt-3', compact ? 'pb-2' : 'pb-3')}>
+        {/* ── Tag + source on the left, save/share on the right (#528) ── */}
+        {tagTitle || citationUrl || !compact ? (
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              {tagTitle && (
+                <button
+                  type="button"
+                  data-testid="post-card-tag"
+                  aria-label={`Show posts tagged #${tagTitle}`}
+                  title={`Show posts tagged #${tagTitle}`}
+                  onClick={handleTagClick}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="inline-flex min-h-6 items-center gap-0.5 rounded-full border border-[rgba(82,178,116,0.4)] bg-[rgba(82,178,116,0.12)] px-2.5 py-1 text-xs font-semibold leading-none text-[#2f6f4a] transition-colors hover:bg-[rgba(82,178,116,0.24)] active:bg-[rgba(82,178,116,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-1 dark:text-[#7fdc9c]"
+                >
+                  <Hash className="size-3" aria-hidden="true" />
+                  {tagTitle}
+                </button>
+              )}
+              {citationUrl && (
+                <a
+                  href={citationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  aria-label={`Source: ${getDomain(citationUrl)} (opens in a new tab)`}
+                  className="inline-flex min-h-6 items-center gap-1 rounded-full border border-[rgba(25,118,210,0.25)] bg-[rgba(25,118,210,0.08)] px-2.5 py-1 text-[11px] font-medium leading-none text-[#1565c0] transition-colors hover:bg-[rgba(25,118,210,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1976d2] focus-visible:ring-offset-1 dark:text-[#64b5f6]"
+                >
+                  <span>Source: {getDomain(citationUrl)}</span>
+                  <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+                </a>
+              )}
+            </div>
+
+            {!compact && (
+              <div
+                className="-mr-1.5 -mt-1 flex shrink-0 items-center gap-0.5"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className={cn(
+                    'p-1.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]',
+                    isBookmarked
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10'
+                  )}
+                  onClick={handleBookmark}
+                  aria-label={isBookmarked ? 'Remove saved post' : 'Save post'}
+                  aria-pressed={isBookmarked}
+                >
+                  <Bookmark className="size-4" fill={isBookmarked ? 'currentColor' : 'none'} />
+                </button>
+                <button
+                  type="button"
+                  className="p-1.5 rounded text-muted-foreground hover:text-[#2f6f4a] hover:bg-[#52b274]/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] dark:hover:text-[#7fdc9c]"
+                  onClick={handleShare}
+                  aria-label="Share"
+                >
+                  <Share2 className="size-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* ── Title and preview open the post ── */}
         <h3
           className={cn(
-            'font-bold text-foreground leading-snug mb-2 break-words group-hover/card:text-[#52b274] transition-colors',
+            'font-bold text-foreground leading-snug mb-1.5 break-words decoration-[#52b274]/60 underline-offset-4 transition-colors group-hover/card:text-[#52b274] group-hover/card:underline',
             compact ? 'text-lg' : 'text-xl'
           )}
         >
           <HighlightText text={title || 'Untitled'} highlightTerms={searchKey || ''} />
         </h3>
 
-        {(groupId && groupData?.group) || citationUrl || (compact && attribution) ? (
-          <div
-            className={cn(
-              'flex items-center flex-wrap gap-1.5',
-              compact ? 'justify-center mb-1' : 'mb-3'
-            )}
-          >
-            {groupId && groupData?.group && (
-              <button
-                type="button"
-                aria-label={`Filter by #${groupData.group.title}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  // Keep the current search/date/sort/Following filters when already on the home page.
-                  const params = new URLSearchParams(
-                    window.location.pathname === '/' ? window.location.search : ''
-                  )
-                  params.set('group', groupId)
-                  params.delete('page')
-                  router.push(`/?${params.toString()}`)
-                }}
-                onKeyDown={(e) => e.stopPropagation()}
-                className="text-[10px] font-semibold text-[#52b274] bg-[rgba(82,178,116,0.1)] border border-[rgba(82,178,116,0.2)] px-2 py-0.5 rounded-full uppercase tracking-wide hover:bg-[rgba(82,178,116,0.2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]/50 transition-colors cursor-pointer"
-              >
-                #{groupData.group.title}
-              </button>
-            )}
-            {citationUrl && (
-              <a
-                href={citationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Source: ${getDomain(citationUrl)} (opens in a new tab)`}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1976d2] bg-[rgba(25,118,210,0.08)] border border-[rgba(25,118,210,0.2)] px-2 py-0.5 rounded-full hover:bg-[rgba(25,118,210,0.18)] transition-colors"
-              >
-                <span>Source: {getDomain(citationUrl)}</span>
-                <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-              </a>
-            )}
-            {compact && attribution ? (
-              <span className="text-xs italic text-muted-foreground">— {attribution}</span>
-            ) : null}
-          </div>
+        {compact && attribution ? (
+          <p className="mb-1 text-xs italic text-muted-foreground">— {attribution}</p>
         ) : null}
 
-        {/* Body preview: 3 lines / ~150 chars, no Show More (#474). Shown on
-            directory cards too — compact only hides bookmark/share chrome. */}
+        {/* Body preview: 3 lines / ~150 chars, no Show More (#474). */}
         <div
           className={cn(
             'text-muted-foreground leading-relaxed whitespace-pre-line line-clamp-3',
@@ -442,29 +311,46 @@ function PostCardComponent({
         </div>
       </div>
 
-      {/* ── Footer: avatar + username + date ── */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border/30 bg-muted/10">
+      {/* ── Footer: author and time, then activity and the way into the post ── */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5 border-t border-border/30 bg-muted/10">
         <button
           type="button"
-          className="flex items-center gap-2 group/author min-w-0"
+          className="flex items-center gap-2 group/author min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-1"
           onClick={handleProfileClick}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           <DisplayAvatar
             avatar={creator?.avatar as string | Record<string, unknown> | undefined}
             username={avatarSeed}
-            size={32}
+            size={28}
           />
-          <span className="text-sm font-bold text-[#52b274] group-hover/author:underline truncate">
+          <span className="text-sm font-bold text-[#2f7a4c] group-hover/author:underline truncate dark:text-[#6fcf8f]">
             {username}
           </span>
         </button>
-        <span className="text-muted-foreground/40 flex-shrink-0">|</span>
-        <time
-          className="text-xs text-muted-foreground/70 flex-shrink-0"
-          suppressHydrationWarning
-        >
+        <span className="text-muted-foreground/40 flex-shrink-0" aria-hidden="true">
+          ·
+        </span>
+        <time className="text-xs text-muted-foreground flex-shrink-0" suppressHydrationWarning>
           {formattedDate}
         </time>
+
+        <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+          <span
+            className="inline-flex items-center gap-1"
+            data-testid="post-card-interactions"
+          >
+            <MessagesSquare className="size-3.5" aria-hidden="true" />
+            {interactionCount} interaction{interactionCount !== 1 ? 's' : ''}
+          </span>
+          <span
+            className="hidden items-center gap-0.5 font-semibold text-[#2f6f4a] transition-transform group-hover/card:translate-x-0.5 sm:inline-flex dark:text-[#7fdc9c]"
+            aria-hidden="true"
+          >
+            Open post
+            <ArrowRight className="size-3.5" />
+          </span>
+        </span>
       </div>
     </article>
   )
