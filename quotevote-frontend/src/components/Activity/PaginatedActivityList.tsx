@@ -146,6 +146,8 @@ function LoadActivityCard({
     <div
       className={cn(
         'mb-2 w-full max-w-full overflow-x-hidden box-border',
+        // The keyboard focus outline sits here: this wrapper's overflow would clip one on the card.
+        'has-[>[role=article]:focus-visible]:outline-3 has-[>[role=article]:focus-visible]:outline-offset-2 has-[>[role=article]:focus-visible]:outline-[#52b274]',
         !isPosted && 'rounded-lg shadow-lg border'
       )}
       style={{ borderRadius: 7 }}
