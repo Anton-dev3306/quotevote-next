@@ -179,3 +179,9 @@ export interface ProfileBackground {
   hydrated: boolean;
 }
 
+export interface ProfileBackgroundPickerProps {
+  color: string;
+  pattern: ProfileBackgroundPattern;
+  onColorChange: (color: string) => void;
+  onPatternChange: (pattern: ProfileBackgroundPattern) => void;
+}

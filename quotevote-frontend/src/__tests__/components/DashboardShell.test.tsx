@@ -45,9 +45,6 @@ jest.mock("@/components/Navbars/NavSearch", () => ({
   __esModule: true,
   default: () => null,
 }));
-jest.mock("@/components/DashboardSidebars", () => ({
-  DashboardSidebars: () => null,
-}));
 jest.mock("@/components/Notifications/NotificationsPanel", () => ({
   NotificationsPanel: () => <div data-testid="notifications-panel-mount" />,
 }));
@@ -164,7 +161,7 @@ describe("DashboardShell authenticated sidebar (#492)", () => {
     await openAccountMenu();
     const menu = screen.getByTestId("authenticated-account-menu");
 
-    expect(within(menu).getByRole("link", { name: /settings & privacy/i })).toHaveAttribute(
+    expect(within(menu).getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
       "/settings"
     );
@@ -330,5 +327,43 @@ describe("DashboardShell notifications in the main navigation (#532)", () => {
     fireEvent.click(screen.getByTestId("desktop-notifications-button"));
     useAppStore.getState().logout();
     expect(useAppStore.getState().ui.notificationsOpen).toBe(false);
+  });
+});
+
+describe("DashboardShell account dropdown (#536)", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
+  it("names the item Settings and drops the subtext under each item", async () => {
+    useAppStore.getState().setUserData(regularUser);
+    const user = userEvent.setup();
+    render(
+      <DashboardShell>
+        <div>feed</div>
+      </DashboardShell>
+    );
+
+    // The desktop navbar trigger (the mobile one opens the Sheet instead).
+    const trigger = screen
+      .getAllByTestId("user-profile-menu")
+      .find((el) => el.getAttribute("aria-haspopup") === "menu");
+    await user.click(trigger!);
+    const menu = await screen.findByRole("menu");
+
+    expect(within(menu).getByRole("menuitem", { name: "Your Profile" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Settings" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    for (const subtext of [
+      "View and edit profile",
+      "Manage your account",
+      "See you next time!",
+      "Settings & Privacy",
+    ]) {
+      expect(within(menu).queryByText(subtext)).not.toBeInTheDocument();
+    }
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
+    expect(mockPush).toHaveBeenCalledWith("/settings");
   });
 });

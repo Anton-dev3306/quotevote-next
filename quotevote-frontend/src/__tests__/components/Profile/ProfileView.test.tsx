@@ -9,7 +9,7 @@
  * - RC1-007: Multi-select activity filters, union filtering, All reset
  */
 
-import { render, screen, act, waitFor } from '../../utils/test-utils';
+import { render, screen, within, act, waitFor } from '../../utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import { ProfileView } from '../../../components/Profile/ProfileView';
 import type { ProfileUser } from '@/types/profile';
@@ -381,7 +381,7 @@ describe('ProfileView', () => {
       });
       await waitFor(() => {
         expect(screen.getByTestId('profile-header')).toBeInTheDocument();
-        expect(screen.getByRole('group', { name: /activity filters/i })).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: 'Show' })).toBeInTheDocument();
       });
     });
 
@@ -396,33 +396,39 @@ describe('ProfileView', () => {
     });
   });
 
-  describe('RC1-009: Activity Button Colors by Type', () => {
-    it('applies activity-specific color classes when filters are active', async () => {
+  describe('#536: activity filter is a labelled chip filter, not tabs', () => {
+    it('labels the group "Show" and starts on All', async () => {
+      await act(async () => {
+        render(<ProfileView profileUser={mockProfileUser} />);
+      });
+      const group = screen.getByRole('group', { name: 'Show' });
+      expect(within(group).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+      for (const label of ['Posts', 'Voted', 'Commented', 'Quoted']) {
+        expect(within(group).getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
+      }
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    });
+
+    it('combines filters, uses a readable active color, and Clear goes back to All', async () => {
       const user = userEvent.setup();
       await act(async () => {
         render(<ProfileView profileUser={mockProfileUser} />);
       });
 
-      const votedButton = screen.getByRole('button', { name: 'Voted' });
-      await user.click(votedButton);
-      await waitFor(() => {
-        expect(votedButton.className).toContain('border-[#52b274]');
-        expect(votedButton.className).toContain('text-[#52b274]');
-      });
+      const voted = screen.getByRole('button', { name: 'Voted' });
+      const quoted = screen.getByRole('button', { name: 'Quoted' });
+      await user.click(voted);
+      await user.click(quoted);
+      expect(voted).toHaveAttribute('aria-pressed', 'true');
+      expect(quoted).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false');
+      // Brand-green text (#52b274) is 2.6:1 on white; the active chip uses the darker green.
+      expect(voted.className).toContain('text-[#2f6f4a]');
 
-      const commentedButton = screen.getByRole('button', { name: 'Commented' });
-      await user.click(commentedButton);
-      await waitFor(() => {
-        expect(commentedButton.className).toContain('border-[#ca8a04]');
-        expect(commentedButton.className).toContain('text-[#ca8a04]');
-      });
-
-      const quotedButton = screen.getByRole('button', { name: 'Quoted' });
-      await user.click(quotedButton);
-      await waitFor(() => {
-        expect(quotedButton.className).toContain('border-[#c026d3]');
-        expect(quotedButton.className).toContain('text-[#c026d3]');
-      });
+      await user.click(screen.getByRole('button', { name: 'Clear' }));
+      expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+      expect(voted).toHaveAttribute('aria-pressed', 'false');
     });
   });
 });
