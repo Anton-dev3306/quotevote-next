@@ -1,21 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Calendar, Clock, Hash, ListFilter, Search as SearchIcon } from 'lucide-react'
+import { Calendar, Clock, ListFilter, Search as SearchIcon, Users } from 'lucide-react'
 import { useQuery } from '@apollo/client/react'
 import { useDebounce } from '@/hooks/useDebounce'
-import { GROUPS_QUERY } from '@/graphql/queries'
+import { GET_GROUP, GROUPS_QUERY } from '@/graphql/queries'
 import { cn } from '@/lib/utils'
+import { useAppStore } from '@/store'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import DateRangeFilter from '@/components/SearchContainer/DateRangeFilter'
+import ActiveFilters from '@/components/SearchContainer/ActiveFilters'
 import type { Group } from '@/types/components'
 
 type SortOrder = 'desc' | 'asc'
 
 interface GroupsQueryData {
   groups: Group[]
+}
+
+interface GroupQueryData {
+  group?: { _id: string; title: string }
 }
 
 function chipClass(active: boolean): string {
@@ -34,23 +40,32 @@ function chipClass(active: boolean): string {
 export function DirectoryToolbar(): ReactElement {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const user = useAppStore((s) => s.user.data)
+  const isLoggedIn = !!(user?._id || user?.id)
 
   const q = searchParams.get('q') || ''
   const from = searchParams.get('from') || ''
   const to = searchParams.get('to') || ''
   const sortOrder = (searchParams.get('sort') || 'desc') as SortOrder
   const interactions = searchParams.get('interactions') === 'true'
+  const following = searchParams.get('following') === 'true'
   const groupId = searchParams.get('group') || ''
 
   const [searchInput, setSearchInput] = useState(q)
   const debouncedSearch = useDebounce(searchInput, 300)
 
+  const { data: groupData } = useQuery<GroupQueryData>(GET_GROUP, {
+    variables: { groupId },
+    skip: !groupId,
+    errorPolicy: 'all',
+    fetchPolicy: 'cache-first',
+  })
+
   const { data: groupsData } = useQuery<GroupsQueryData>(GROUPS_QUERY, {
     variables: { limit: 100 },
     errorPolicy: 'all',
   })
-  const groups = (groupsData?.groups ?? []).filter((group) => group.privacy !== 'private')
-  const selectedGroup = groups.find((group) => group._id === groupId)
+  const publicGroups = (groupsData?.groups ?? []).filter((g) => g.privacy !== 'private')
 
   const updateParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -66,10 +81,31 @@ export function DirectoryToolbar(): ReactElement {
     [router, searchParams]
   )
 
+  // A lone `#word` that names a tag applies the tag filter (same as the tag badges); anything else is text search.
+  const lastApplied = useRef(q)
+  const applySearch = useCallback(
+    (raw: string) => {
+      const text = raw.trim()
+      lastApplied.current = raw
+      const tag = /^#(\S+)$/.exec(text)?.[1]?.toLowerCase()
+      const group = tag ? publicGroups.find((g) => g.title.toLowerCase() === tag) : undefined
+      if (group) {
+        setSearchInput('')
+        updateParams({ group: group._id, q: null })
+      } else {
+        updateParams({ q: text || null })
+      }
+    },
+    [publicGroups, updateParams]
+  )
+
+  // Keyed on the debounced input only: removing the search pill clears `q` in the URL,
+  // and re-running on `q` would re-apply the stale debounced text.
   useEffect(() => {
-    if (debouncedSearch === q) return
-    updateParams({ q: debouncedSearch.trim() || null })
-  }, [debouncedSearch, q, updateParams])
+    if (debouncedSearch === q || debouncedSearch === lastApplied.current) return
+    applySearch(debouncedSearch)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch])
 
   const isLatest = sortOrder === 'desc' && !interactions
   const hasDateFilter = !!(from || to)
@@ -88,6 +124,43 @@ export function DirectoryToolbar(): ReactElement {
     })
   }
 
+  const groupTitle = groupData?.group?.title
+  const activeFilters = [
+    {
+      key: 'q',
+      label: 'Search',
+      value: q,
+      onRemove: () => {
+        setSearchInput('')
+        updateParams({ q: null })
+      },
+    },
+    {
+      key: 'following',
+      label: 'Feed',
+      value: following ? 'Following' : '',
+      onRemove: () => updateParams({ following: null }),
+    },
+    {
+      key: 'interactions',
+      label: 'Sort',
+      value: interactions ? 'Most popular' : '',
+      onRemove: handleLatest,
+    },
+    {
+      key: 'group',
+      label: 'Tag',
+      value: groupId ? (groupTitle ? `#${groupTitle}` : 'Selected') : '',
+      onRemove: () => updateParams({ group: null }),
+    },
+    {
+      key: 'date',
+      label: 'Date',
+      value: hasDateFilter ? (isToday ? 'Today' : [from, to].filter(Boolean).join(' – ')) : '',
+      onRemove: () => updateParams({ from: null, to: null }),
+    },
+  ]
+
   return (
     <div
       data-testid="directory-toolbar"
@@ -97,11 +170,11 @@ export function DirectoryToolbar(): ReactElement {
         role="search"
         onSubmit={(e) => {
           e.preventDefault()
-          updateParams({ q: searchInput.trim() || null })
+          applySearch(searchInput)
         }}
       >
         <label htmlFor="directory-search" className="sr-only">
-          Search quotes, topics, sources
+          Search quotes, topics, sources, or use #hashtag
         </label>
         <div className="relative">
           <SearchIcon
@@ -114,10 +187,14 @@ export function DirectoryToolbar(): ReactElement {
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search quotes, topics, sources..."
+            placeholder="Search quotes, topics, sources… or use #hashtag"
+            aria-describedby="directory-search-tip"
             className="w-full h-11 rounded-full border border-border bg-background pl-10 pr-4 text-base md:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#52b274]/40"
           />
         </div>
+        <p id="directory-search-tip" className="mt-1.5 px-3.5 text-xs text-muted-foreground">
+          Tip: use #hashtag to filter by tag.
+        </p>
       </form>
 
       <div className="flex flex-wrap items-center gap-1 md:gap-2 min-w-0">
@@ -131,6 +208,19 @@ export function DirectoryToolbar(): ReactElement {
           <Clock className="size-3.5" aria-hidden />
           Latest
         </button>
+
+        {isLoggedIn ? (
+          <button
+            type="button"
+            data-testid="filter-following"
+            aria-pressed={following}
+            onClick={() => updateParams({ following: following ? null : 'true' })}
+            className={chipClass(following)}
+          >
+            <Users className="size-3.5" aria-hidden />
+            Following
+          </button>
+        ) : null}
 
         <Popover>
           <PopoverTrigger asChild>
@@ -160,45 +250,6 @@ export function DirectoryToolbar(): ReactElement {
           <PopoverTrigger asChild>
             <button
               type="button"
-              data-testid="filter-tag"
-              aria-pressed={!!groupId}
-              className={chipClass(!!groupId)}
-            >
-              <Hash className="size-3.5" aria-hidden />
-              {selectedGroup ? `# ${selectedGroup.title}` : 'Tag'}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-64 p-2 max-h-60 overflow-y-auto overflow-x-hidden">
-            <button
-              type="button"
-              onClick={() => updateParams({ group: null })}
-              className={cn(
-                'w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-muted',
-                !groupId && 'text-[#52b274] font-medium'
-              )}
-            >
-              All tags
-            </button>
-            {groups.map((group) => (
-              <button
-                key={group._id}
-                type="button"
-                onClick={() => updateParams({ group: group._id })}
-                className={cn(
-                  'w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-muted truncate',
-                  groupId === group._id && 'text-[#52b274] font-medium'
-                )}
-              >
-                #{group.title}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
               data-testid="filter-date"
               aria-pressed={hasDateFilter}
               className={chipClass(hasDateFilter)}
@@ -218,6 +269,8 @@ export function DirectoryToolbar(): ReactElement {
           </PopoverContent>
         </Popover>
       </div>
+
+      <ActiveFilters filters={activeFilters} />
     </div>
   )
 }

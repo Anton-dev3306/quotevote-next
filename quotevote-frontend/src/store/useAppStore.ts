@@ -47,6 +47,7 @@ const initialUIState: UIState = {
   focusedComment: null,
   sharedComment: null,
   mobileDiscussionOpen: false,
+  notificationsOpen: false,
   linkedPassage: null,
   pendingQuote: null,
 };
@@ -99,6 +100,7 @@ interface AppStore extends AppState {
   setFocusedComment: (commentId: string | null) => void;
   setSharedComment: (commentId: string | null) => void;
   setMobileDiscussionOpen: (open: boolean) => void;
+  setNotificationsOpen: (open: boolean) => void;
   setLinkedPassage: (passage: LinkedPassage | null) => void;
   setPendingQuote: (quote: PendingQuote | null) => void;
 
@@ -169,7 +171,7 @@ export const useAppStore = create<AppStore>()(
         ...initialUserState,
         loading: false,
       },
-      ui: { ...state.ui, pendingQuote: null },
+      ui: { ...state.ui, pendingQuote: null, notificationsOpen: false },
     })),
 
   updateAvatar: (avatar) =>
@@ -242,6 +244,14 @@ export const useAppStore = create<AppStore>()(
       ui: {
         ...state.ui,
         mobileDiscussionOpen: open,
+      },
+    })),
+
+  setNotificationsOpen: (open) =>
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        notificationsOpen: open,
       },
     })),
 

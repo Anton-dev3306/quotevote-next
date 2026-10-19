@@ -35,6 +35,7 @@ function AuthenticatedFeed(): ReactElement {
   const sortOrder = sortParam === 'asc' ? 'asc' : 'desc'
   const interactions = searchParams.get('interactions') === 'true'
   const groupId = searchParams.get('group') || undefined
+  const following = searchParams.get('following') === 'true'
 
   return (
     <DashboardShell>
@@ -58,6 +59,7 @@ function AuthenticatedFeed(): ReactElement {
               endDateRange={to || undefined}
               sortOrder={sortOrder}
               interactions={interactions}
+              friendsOnly={following}
               groupId={groupId}
               compact
             />

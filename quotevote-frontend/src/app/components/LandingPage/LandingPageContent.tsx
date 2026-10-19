@@ -36,6 +36,7 @@ import { SEARCH, GET_FEATURED_POSTS } from '@/graphql/queries';
 import { REQUEST_USER_ACCESS_MUTATION } from '@/graphql/mutations';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toAppPostUrl } from '@/lib/utils/sanitizeUrl';
+import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema';
 import type { Post } from '@/types/post';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -2093,9 +2094,6 @@ function FeaturedPostCard({ post, timeAgo }: { post: Post; timeAgo: string }) {
 
 // ── Be in Touch Section ────────────────────────────────────────────────────
 
-const EMAIL_REGEX =
-  /^(("[\w-+\s]+")|(([\w-+]+(?:\.[\w-+]+)*)|("[\w-+\s]+")([\w-+]+(?:\.[\w-+]+)*)))(@((?:[\w-+]+\.)*\w[\w-+]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$)|(@\[?((25[0-5]\.|2[0-4][\d]\.|1[\d]{2}\.|[\d]{1,2}\.))((25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\.){2}(25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\]?$)/i;
-
 function BeInTouchSection() {
   const [email, setEmail] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -2109,16 +2107,17 @@ function BeInTouchSection() {
     setErrorMessage('');
     setSuccessMessage('');
 
-    const trimmed = email.trim();
-
-    if (!EMAIL_REGEX.test(trimmed)) {
-      setErrorMessage('Please enter a valid email address.');
+    const parsed = parseRequestAccessEmail(email);
+    if (!parsed.success) {
+      setErrorMessage(parsed.message);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await requestUserAccess({ variables: { requestUserAccessInput: { email: trimmed } } });
+      await requestUserAccess({
+        variables: { requestUserAccessInput: { email: parsed.email } },
+      });
       setSuccessMessage("Thank you for requesting access! We'll be in touch soon.");
       setEmail('');
     } catch (error) {

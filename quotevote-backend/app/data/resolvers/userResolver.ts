@@ -1,6 +1,8 @@
 import { GraphQLError } from 'graphql';
-import { Prisma } from '@prisma/client';
+import { Prisma, ReportStatus } from '@prisma/client';
+import type { ReportReason, ReportSeverity } from '@prisma/client';
 import { normalizeBio } from '../utils/bioValidation';
+import { toIsoDateString } from '~/data/utils/serializeDate';
 import {
   PUBLIC_USER_SELECT,
   toPublicUser,
@@ -14,6 +16,27 @@ const OBJECT_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
 function isObjectId(id: string): boolean {
   return OBJECT_ID_PATTERN.test(id);
 }
+
+const USER_REPORTS_LIMIT = 100;
+
+function isReportStatus(value: string): value is ReportStatus {
+  return (Object.values(ReportStatus) as string[]).includes(value);
+}
+
+type UserReportResult = {
+  _id: string;
+  _reporterId: string;
+  _reportedUserId: string;
+  reason: ReportReason;
+  description: string | null;
+  status: ReportStatus;
+  severity: ReportSeverity;
+  adminNotes: string | null;
+  reporter: Common.User | null;
+  reportedUser: Common.User | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type UpdateUserInput = {
   _id: string;
@@ -74,6 +97,70 @@ export const userResolver = {
       });
 
       return users.map((u) => toPublicUser(u as PrismaUserRecord));
+    },
+    getUserReports: async (
+      _parent: unknown,
+      args: { userId: string; status?: string | null },
+      context: GraphQLContext
+    ): Promise<UserReportResult[]> => {
+      if (!context.user?._id) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+      if (context.user?.admin !== true) {
+        throw new GraphQLError('Admin access required', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+      if (!isObjectId(args.userId)) {
+        throw new GraphQLError('Invalid ID format', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      if (args.status && !isReportStatus(args.status)) {
+        throw new GraphQLError('Invalid report status', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      const reports = await context.prisma.userReport.findMany({
+        where: {
+          reportedUserId: args.userId,
+          ...(args.status && isReportStatus(args.status) ? { status: args.status } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: USER_REPORTS_LIMIT,
+      });
+
+      // Loaded separately so a report whose account no longer exists
+      // resolves to null instead of failing the whole list.
+      const userIds = [...new Set(reports.flatMap((r) => [r.reporterId, r.reportedUserId]))];
+      const users = userIds.length
+        ? await context.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: PUBLIC_USER_SELECT,
+          })
+        : [];
+      const usersById = new Map(users.map((u) => [u.id, toPublicUser(u as PrismaUserRecord)]));
+
+      return reports.map((report) => {
+        const createdAt = report.createdAt ?? report.created ?? undefined;
+        return {
+          _id: report.id,
+          _reporterId: report.reporterId,
+          _reportedUserId: report.reportedUserId,
+          reason: report.reason,
+          description: report.description,
+          status: report.status,
+          severity: report.severity,
+          adminNotes: report.adminNotes,
+          reporter: usersById.get(report.reporterId) ?? null,
+          reportedUser: usersById.get(report.reportedUserId) ?? null,
+          createdAt: toIsoDateString(createdAt),
+          updatedAt: toIsoDateString(report.updatedAt ?? createdAt),
+        };
+      });
     },
   },
 

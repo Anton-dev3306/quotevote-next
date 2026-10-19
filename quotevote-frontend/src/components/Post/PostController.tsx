@@ -7,6 +7,7 @@ import { useAppStore } from '@/store'
 import { GET_POST } from '@/graphql/queries'
 import Post from './Post'
 import PostSkeleton from './PostSkeleton'
+import PostUnavailable from './PostUnavailable'
 import type { PostControllerProps, PostQueryData } from '@/types/post'
 
 /**
@@ -36,9 +37,7 @@ export default function PostController({
 
   if (!postId) {
     return (
-      <div className="container mx-auto p-4">
-        <p className="text-muted-foreground">Post not found</p>
-      </div>
+      <PostUnavailable />
     )
   }
 
@@ -53,9 +52,7 @@ export default function PostController({
 
   if (!data?.post) {
     return (
-      <div className="container mx-auto p-4">
-        <p className="text-muted-foreground">Post not found</p>
-      </div>
+      <PostUnavailable />
     )
   }
 

@@ -1,78 +1,80 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useMutation, useQuery } from "@apollo/client/react";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import Link from "next/link";
-import { COMPLETE_SIGNUP } from "@/graphql/mutations";
-import { VERIFY_INVITE_SIGNUP_TOKEN } from "@/graphql/queries";
-import { useAppStore } from "@/store/useAppStore";
-import { CURRENT_TERMS_VERSION } from "@/lib/legal/termsPolicy";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useMutation, useQuery } from '@apollo/client/react'
+import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { UPDATE_USER } from '@/graphql/mutations'
+import { VERIFY_PASSWORD_RESET_TOKEN } from '@/graphql/queries'
+import { setToken } from '@/lib/auth'
+import { useAppStore } from '@/store/useAppStore'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 
-interface VerifyInviteTokenData {
-  verifyInviteSignupToken: {
-    _id: string;
-    username: string;
-    email: string;
-  } | null;
+interface VerifyTokenData {
+  verifyUserPasswordResetToken: {
+    _id: string
+    username: string
+    email: string
+  } | null
 }
 
-interface CompleteSignupData {
-  completeSignup: Record<string, unknown>;
+interface UpdateUserData {
+  updateUser: Record<string, unknown>
 }
 
 const signupSchema = z
   .object({
     username: z
       .string()
-      .min(3, "Min 3 chars")
+      .min(3, 'Min 3 chars')
       .max(20)
-      .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers, underscores"),
-    email: z.string().email("Invalid email"),
+      .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, underscores'),
+    email: z.string().email('Invalid email'),
     password: z
       .string()
-      .min(8, "Min 8 chars")
-      .regex(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Must contain uppercase, lowercase, and number"),
+      .min(8, 'Min 8 chars')
+      .regex(
+        /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+        'Must contain uppercase, lowercase, and number'
+      ),
     confirmPassword: z.string(),
-    tos: z.boolean().refine((accepted) => accepted, {
-      message: "You must agree to the Terms of Service",
-    }),
   })
   .refine((d) => d.password === d.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
 
-type SignupFormData = z.infer<typeof signupSchema>;
+type SignupFormData = z.infer<typeof signupSchema>
 
 export default function SignupPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") || "";
-  const setUserData = useAppStore((s) => s.setUserData);
-  const [submitting, setSubmitting] = useState(false);
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const token = searchParams.get('token') || ''
+  const setUserData = useAppStore((s) => s.setUserData)
+  const [submitting, setSubmitting] = useState(false)
 
-  const {
-    data: tokenData,
-    loading: tokenLoading,
-    error: tokenError,
-  } = useQuery<VerifyInviteTokenData>(VERIFY_INVITE_SIGNUP_TOKEN, {
+  // Verify the invite token
+  const { data: tokenData, loading: tokenLoading, error: tokenError } = useQuery<VerifyTokenData>(VERIFY_PASSWORD_RESET_TOKEN, {
     variables: { token },
     skip: !token,
-  });
+  })
 
-  const verifiedUser = tokenData?.verifyInviteSignupToken;
+  const verifiedUser = tokenData?.verifyUserPasswordResetToken
+  // The address the invite was approved for. It stays on the account (#592).
+  const invitedEmail =
+    token && typeof verifiedUser?.email === 'string' && verifiedUser.email
+      ? verifiedUser.email
+      : undefined
 
-  const [completeSignup] = useMutation<CompleteSignupData>(COMPLETE_SIGNUP);
+  const [updateUser] = useMutation<UpdateUserData>(UPDATE_USER)
 
   const {
     register,
@@ -81,63 +83,66 @@ export default function SignupPageContent() {
     formState: { errors },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { tos: false },
-  });
+  })
 
   useEffect(() => {
-    if (verifiedUser?.email) {
-      setValue("email", verifiedUser.email);
-    }
-  }, [verifiedUser?.email, setValue]);
+    if (invitedEmail) setValue('email', invitedEmail)
+  }, [invitedEmail, setValue])
 
   const onSubmit = async (values: SignupFormData) => {
-    setSubmitting(true);
+    setSubmitting(true)
     try {
       if (token && verifiedUser) {
-        const result = await completeSignup({
+        // Invite-based signup: update the existing user via GraphQL. The email is
+        // left out so the account keeps the address the invite was approved for.
+        setToken(token)
+        const result = await updateUser({
           variables: {
-            token,
-            username: values.username,
-            password: values.password,
-            acceptedTermsVersion: CURRENT_TERMS_VERSION,
+            user: {
+              _id: verifiedUser._id,
+              name: '',
+              username: values.username,
+              password: values.password,
+            },
           },
-        });
-        if (result.data?.completeSignup) {
-          setUserData(result.data.completeSignup as Record<string, unknown>);
-          toast.success("Account set up! Please sign in.");
-          router.push("/auths/login");
-          return;
+        })
+        if (result.data?.updateUser) {
+          setUserData(result.data.updateUser as Record<string, unknown>)
+          toast.success('Account set up! Redirecting...')
+          router.push('/')
+          return
         }
       } else {
-        const { env } = await import("@/config/env");
+        // signup via REST /auth/register endpoint
+        const { env } = await import('@/config/env')
         const response = await fetch(`${env.serverUrl}/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: values.username,
             email: values.email,
             username: values.username,
             password: values.password,
-            status: "active",
-            acceptedTermsVersion: CURRENT_TERMS_VERSION,
+            status: 'active',
           }),
-        });
-
-        const data = await response.json();
+        })
+        
+        const data = await response.json()
         if (!response.ok) {
-          toast.error(data?.error_message || data?.message || "Signup failed");
-          return;
+          toast.error(data?.error_message || data?.message || 'Signup failed')
+          return
         }
-        toast.success("Account created! Please sign in.");
-        router.push("/auths/login");
+        toast.success('Account created! Please sign in.')
+        router.push('/auths/login')
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Signup failed");
+      toast.error(error instanceof Error ? error.message : 'Signup failed')
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
-  };
+  }
 
+  // If token is provided, show loading while verifying
   if (token && tokenLoading) {
     return (
       <div className="space-y-4">
@@ -146,19 +151,22 @@ export default function SignupPageContent() {
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-10 w-full" />
       </div>
-    );
+    )
   }
 
+  // If token provided but invalid
   if (token && !tokenLoading && (!verifiedUser || tokenError)) {
     return (
       <div className="space-y-4 text-center">
         <h1 className="text-2xl font-bold">Invalid Invite</h1>
-        <p className="text-muted-foreground">This invite link is invalid or has expired.</p>
+        <p className="text-muted-foreground">
+          This invite link is invalid or has expired.
+        </p>
         <Link href="/auths/request-access" className="text-primary hover:underline">
           Request a new invite
         </Link>
       </div>
-    );
+    )
   }
 
   return (
@@ -170,13 +178,10 @@ export default function SignupPageContent() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" data-testid="signup-form">
         <div className="space-y-2">
           <Label htmlFor="username">Username</Label>
-          <Input
-            id="username"
-            placeholder="johndoe"
-            {...register("username")}
-            data-testid="signup-username-input"
-          />
-          {errors.username && <p className="text-sm text-destructive">{errors.username.message}</p>}
+          <Input id="username" placeholder="johndoe" {...register('username')} data-testid="signup-username-input" />
+          {errors.username && (
+            <p className="text-sm text-destructive">{errors.username.message}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
@@ -184,10 +189,17 @@ export default function SignupPageContent() {
             id="email"
             type="email"
             placeholder="you@example.com"
-            {...register("email")}
+            {...register('email')}
+            readOnly={Boolean(invitedEmail)}
+            aria-describedby={invitedEmail ? 'signup-email-hint' : undefined}
+            className={invitedEmail ? 'bg-muted text-muted-foreground' : undefined}
             data-testid="signup-email-input"
-            readOnly={Boolean(verifiedUser?.email)}
           />
+          {invitedEmail && (
+            <p id="signup-email-hint" className="text-xs text-muted-foreground">
+              Your invite was sent to this address, so it can&apos;t be changed here.
+            </p>
+          )}
           {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
         </div>
         <div className="space-y-2">
@@ -196,10 +208,12 @@ export default function SignupPageContent() {
             id="password"
             type="password"
             placeholder="••••••••"
-            {...register("password")}
+            {...register('password')}
             data-testid="signup-password-input"
           />
-          {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+          {errors.password && (
+            <p className="text-sm text-destructive">{errors.password.message}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirmPassword">Confirm Password</Label>
@@ -207,60 +221,24 @@ export default function SignupPageContent() {
             id="confirmPassword"
             type="password"
             placeholder="••••••••"
-            {...register("confirmPassword")}
+            {...register('confirmPassword')}
             data-testid="signup-confirm-password-input"
           />
           {errors.confirmPassword && (
             <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
           )}
         </div>
-        <div className="space-y-1">
-          <div className="flex items-start gap-2">
-            <input
-              id="signup-tos"
-              type="checkbox"
-              {...register("tos")}
-              data-testid="signup-tos-checkbox"
-              aria-label="I agree to the Terms of Service"
-              aria-invalid={Boolean(errors.tos)}
-              aria-describedby={errors.tos ? "signup-tos-error" : undefined}
-              className="mt-1 h-4 w-4 accent-primary"
-            />
-            <div className="text-sm leading-6">
-              <label htmlFor="signup-tos">I agree to the </label>
-              <Link
-                href="/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2"
-              >
-                Terms of Service
-              </Link>
-              <span className="text-muted-foreground"> (v{CURRENT_TERMS_VERSION})</span>
-            </div>
-          </div>
-          {errors.tos && (
-            <p id="signup-tos-error" role="alert" className="text-sm text-destructive">
-              {errors.tos.message}
-            </p>
-          )}
-        </div>
-        <Button
-          type="submit"
-          disabled={submitting}
-          className="w-full"
-          data-testid="signup-submit-button"
-        >
+        <Button type="submit" disabled={submitting} className="w-full" data-testid="signup-submit-button">
           {submitting && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
           Create Account
         </Button>
       </form>
       <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
+        Already have an account?{' '}
         <Link href="/auths/login" className="text-primary hover:underline">
           Sign in
         </Link>
       </p>
     </div>
-  );
+  )
 }

@@ -148,22 +148,22 @@ export const Mutation = `type Mutation {
   clearPresence: Boolean
 
   " Add buddy request "
-  addBuddy(roster: RosterInput!): Roster
+  addBuddy(userId: String!): BuddyRelationship!
   
   " Accept buddy request "
-  acceptBuddy(rosterId: String!): Roster
+  acceptBuddy(requestId: String!): BuddyRelationship!
   
   " Decline buddy request "
-  declineBuddy(rosterId: String!): DeletedRoster
+  declineBuddy(requestId: String!): BuddyMutationResult!
   
-  " Block a buddy/user "
-  blockBuddy(buddyId: String!): Roster
+  " Block a user (idempotent; removes pending buddy requests) "
+  blockUser(userId: String!): UserBlockStatus!
+
+  " Unblock a user (idempotent) "
+  unblockUser(userId: String!): UserBlockStatus!
   
-  " Unblock a buddy/user "
-  unblockBuddy(buddyId: String!): Roster
-  
-  " Remove a buddy "
-  removeBuddy(buddyId: String!): DeletedRoster
+  " Remove a buddy, or withdraw a pending request "
+  removeBuddy(userId: String!): BuddyMutationResult!
 
   " Update typing status in chat room "
   updateTyping(typing: TypingInput!): TypingResponse

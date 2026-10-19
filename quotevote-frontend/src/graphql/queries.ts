@@ -837,6 +837,7 @@ export const GET_NOTIFICATIONS = gql`
       post {
         _id
         url
+        deleted
       }
     }
   }

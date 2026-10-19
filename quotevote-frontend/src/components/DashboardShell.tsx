@@ -52,6 +52,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { SubmitPost, SUBMIT_POST_DIALOG_CLASS } from '@/components/SubmitPost';
 import { DashboardSidebars } from '@/components/DashboardSidebars';
+import { NotificationsPanel } from '@/components/Notifications/NotificationsPanel';
 
 /* ------------------------------------------------------------------ */
 
@@ -205,6 +206,8 @@ export function DashboardShell({
   const user = useAppStore((s) => s.user.data);
   const logout = useAppStore((s) => s.logout);
   const mobileDiscussionOpen = useAppStore((s) => s.ui.mobileDiscussionOpen);
+  const notificationsOpen = useAppStore((s) => s.ui.notificationsOpen);
+  const setNotificationsOpen = useAppStore((s) => s.setNotificationsOpen);
 
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -293,8 +296,10 @@ export function DashboardShell({
     requireAuthForAction(() => setSubmitDialogOpen(true));
   };
 
-  const closeMessages = () => {
+  // On mobile both panels are bottom sheets over the same area, so only one stays open.
+  const closeOverlays = () => {
     if (chatOpen) setChatOpen(false);
+    if (notificationsOpen) setNotificationsOpen(false);
   };
 
   return (
@@ -351,6 +356,29 @@ export function DashboardShell({
               <Plus className="size-4" strokeWidth={2.5} />
               <span>Create</span>
             </button>
+
+            {loggedIn && (
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className={cn(
+                  'relative inline-flex items-center justify-center size-9 rounded-full border-0 transition-all duration-150 cursor-pointer',
+                  notificationsOpen
+                    ? 'bg-[#52b274]/15 text-[#52b274]'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/70 hover:text-[#52b274]',
+                )}
+                aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} new` : 'Notifications'}
+                aria-expanded={notificationsOpen}
+                data-testid="desktop-notifications-button"
+              >
+                <Bell className="size-[18px]" fill={notificationsOpen ? 'currentColor' : 'none'} />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-red-500 px-[3px] text-[9px] font-bold leading-none text-white ring-2 ring-card">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {loggedIn && (
               <button
@@ -532,7 +560,7 @@ export function DashboardShell({
         {/* Home */}
         <Link
           href="/"
-          onClick={closeMessages}
+          onClick={closeOverlays}
           className={cn(
             'flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors duration-150',
             isActive('/') ? 'text-[#52b274]' : 'text-muted-foreground'
@@ -546,7 +574,12 @@ export function DashboardShell({
         {/* Messages */}
         <button
           type="button"
-          onClick={() => requireAuthForAction(() => setChatOpen(!chatOpen))}
+          onClick={() =>
+            requireAuthForAction(() => {
+              setNotificationsOpen(false);
+              setChatOpen(!chatOpen);
+            })
+          }
           className={cn(
             'relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors duration-150 border-0 bg-transparent cursor-pointer',
             chatOpen ? 'text-[#52b274]' : 'text-muted-foreground'
@@ -570,7 +603,7 @@ export function DashboardShell({
           type="button"
           data-testid="create-post-button"
           onClick={() => {
-            closeMessages();
+            closeOverlays();
             handleCreateClick();
           }}
           className="flex flex-col items-center justify-center flex-1 h-full cursor-pointer border-0 bg-transparent"
@@ -587,25 +620,29 @@ export function DashboardShell({
         {/* Notifications */}
         <button
           type="button"
-          onClick={() => requireAuthForAction(() => {
-            closeMessages();
-            router.push('/notifications');
-          })}
+          onClick={() =>
+            requireAuthForAction(() => {
+              if (chatOpen) setChatOpen(false);
+              setNotificationsOpen(!notificationsOpen);
+            })
+          }
           className={cn(
             'relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors duration-150 border-0 bg-transparent cursor-pointer',
-            isActive('/notifications') ? 'text-[#52b274]' : 'text-muted-foreground'
+            notificationsOpen ? 'text-[#52b274]' : 'text-muted-foreground'
           )}
-          aria-label="Notifications"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} new` : 'Notifications'}
+          aria-expanded={notificationsOpen}
+          data-testid="mobile-notifications-button"
         >
           <div className="relative">
-            <Bell className="size-[22px]" fill={isActive('/notifications') ? 'currentColor' : 'none'} />
+            <Bell className="size-[22px]" fill={notificationsOpen ? 'currentColor' : 'none'} />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-2 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold leading-none shadow ring-1 ring-card">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </div>
-          <span className="text-[10px] font-semibold">Activity</span>
+          <span className="text-[10px] font-semibold">Notifications</span>
         </button>
 
         {/* Profile */}
@@ -657,14 +694,9 @@ export function DashboardShell({
         )}
       >
         {pathname.startsWith('/profile') || pathname.startsWith('/settings') ? (
-          <div
-            className={cn(
-              'lg:pl-[300px] xl:pl-[340px]',
-              loggedIn && 'xl:pr-[360px] 2xl:pr-[420px]'
-            )}
-          >
+          <div className={cn(loggedIn && 'xl:pr-[360px] 2xl:pr-[420px]')}>
             <DashboardSidebars />
-            <div className="min-w-0 px-4">
+            <div className="mx-auto min-w-0 max-w-3xl px-4">
               {children}
             </div>
           </div>
@@ -689,6 +721,7 @@ export function DashboardShell({
       </main>
 
       <ChatPanel />
+      {loggedIn && <NotificationsPanel />}
 
       {loggedIn && (
         <AuthenticatedAccountSheet
