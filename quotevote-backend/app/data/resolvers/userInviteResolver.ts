@@ -1,5 +1,9 @@
 /**
  * Invitation request, approval, and Terms-gated signup completion (#573).
+ *
+ * Invite lifecycle uses legacy numeric `User.status` (not `accountStatus`):
+ *   1 = access requested, 4 = approved (invite sent), 2 = declined.
+ * `accountStatus` stays reserved for moderation (active / disabled / …).
  */
 
 import { GraphQLError } from 'graphql';
@@ -25,6 +29,11 @@ import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
 
 const OBJECT_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
+
+/** Legacy invite request / approval / decline codes on `User.status`. */
+const INVITE_STATUS_REQUESTED = 1;
+const INVITE_STATUS_DECLINED = 2;
+const INVITE_STATUS_APPROVED = 4;
 
 function isObjectId(id: string): boolean {
   return OBJECT_ID_PATTERN.test(id);
@@ -56,15 +65,22 @@ export const userInviteResolver = {
       const payload = verifyInviteSignupToken(args.token);
       const user = await context.prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, email: true, username: true, password: true, accountStatus: true },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          password: true,
+          status: true,
+          accountStatus: true,
+        },
       });
 
       if (!user || user.accountStatus === 'disabled') {
         return null;
       }
 
-      // Already completed accounts should not reuse the invite token.
-      if (user.password) {
+      // Only approved, unfinished invites may be verified.
+      if (user.password || user.status !== INVITE_STATUS_APPROVED) {
         return null;
       }
 
@@ -97,6 +113,7 @@ export const userInviteResolver = {
           username: true,
           name: true,
           accountStatus: true,
+          status: true,
           password: true,
           avatar: true,
           bio: true,
@@ -119,13 +136,39 @@ export const userInviteResolver = {
             extensions: { code: 'BAD_USER_INPUT' },
           });
         }
+
+        // Re-open a prior request / decline as a fresh request (status 1).
+        if (!existingUser.password) {
+          user = await context.prisma.user.update({
+            where: { id: existingUser.id },
+            data: { status: INVITE_STATUS_REQUESTED },
+            select: {
+              id: true,
+              email: true,
+              username: true,
+              name: true,
+              accountStatus: true,
+              status: true,
+              password: true,
+              avatar: true,
+              bio: true,
+              contributorBadge: true,
+              upvotes: true,
+              downvotes: true,
+              followingIds: true,
+              followerIds: true,
+              reputation: true,
+              isAdmin: true,
+            },
+          });
+        }
       } else {
         try {
           user = await context.prisma.user.create({
             data: {
               email,
               username: email,
-              accountStatus: 'pending',
+              status: INVITE_STATUS_REQUESTED,
               password: null,
             },
             select: {
@@ -134,6 +177,7 @@ export const userInviteResolver = {
               username: true,
               name: true,
               accountStatus: true,
+              status: true,
               password: true,
               avatar: true,
               bio: true,
@@ -199,7 +243,7 @@ export const userInviteResolver = {
 
       const invitedUser = await context.prisma.user.findUnique({
         where: { id: args.userId },
-        select: { id: true, email: true, username: true, password: true },
+        select: { id: true, email: true, username: true, password: true, status: true },
       });
 
       if (!invitedUser) {
@@ -218,10 +262,9 @@ export const userInviteResolver = {
           });
         }
 
-        // Keep pending until completeSignup writes password + TermsAcceptance.
         await context.prisma.user.update({
           where: { id: invitedUser.id },
-          data: { accountStatus: 'pending' },
+          data: { status: INVITE_STATUS_APPROVED },
         });
 
         const inviteToken = generateInviteSignupToken(invitedUser.id);
@@ -253,7 +296,7 @@ export const userInviteResolver = {
       if (isDeclinedInviteStatus(args.inviteStatus)) {
         await context.prisma.user.update({
           where: { id: invitedUser.id },
-          data: { accountStatus: 'disabled' },
+          data: { status: INVITE_STATUS_DECLINED },
         });
 
         try {
@@ -322,7 +365,7 @@ export const userInviteResolver = {
 
       const existing = await context.prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, password: true, accountStatus: true, email: true },
+        select: { id: true, password: true, status: true, accountStatus: true, email: true },
       });
 
       if (!existing || existing.accountStatus === 'disabled') {
@@ -333,6 +376,12 @@ export const userInviteResolver = {
 
       if (existing.password) {
         throw new GraphQLError('Signup has already been completed for this invite', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      if (existing.status !== INVITE_STATUS_APPROVED) {
+        throw new GraphQLError('Invite is not approved for signup', {
           extensions: { code: 'BAD_USER_INPUT' },
         });
       }

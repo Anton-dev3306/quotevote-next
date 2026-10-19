@@ -118,8 +118,12 @@ describe('Authentication Utils', () => {
       expect(res.status).toHaveBeenCalledWith(201);
     });
 
-    it('should handle duplicate user', async () => {
-      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ username: 'testuser' });
+    it('should report username conflict when only username matches', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: 'existing',
+        username: 'testuser',
+        email: 'other@example.com',
+      });
       req.body = {
         name: 'Test',
         email: 'test@example.com',
@@ -131,6 +135,31 @@ describe('Authentication Utils', () => {
       await auth.register(req as Request, res as Response);
 
       expect(res.status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith({
+        error_message: 'Username testuser already exists!',
+      });
+    });
+
+    it('should report email conflict when only email matches', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: 'existing',
+        username: 'taken_user',
+        email: 'test@example.com',
+      });
+      req.body = {
+        name: 'Test',
+        email: 'test@example.com',
+        username: 'brand_new',
+        password: 'password123',
+        acceptedTermsVersion: CURRENT_TERMS_VERSION,
+      };
+
+      await auth.register(req as Request, res as Response);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(json).toHaveBeenCalledWith({
+        error_message: 'Email already exists!',
+      });
     });
 
     it('should handle generic error during registration', async () => {

@@ -1,3 +1,4 @@
+import * as bcrypt from 'bcryptjs';
 import { GraphQLError } from 'graphql';
 import { Prisma, ReportStatus } from '@prisma/client';
 import type { ReportReason, ReportSeverity } from '@prisma/client';
@@ -10,6 +11,9 @@ import {
 } from '~/data/utils/userPrismaMapper';
 import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
+
+/** Legacy invite codes: 1 = requested, 4 = approved (not yet signed up). */
+const UNFINISHED_INVITE_STATUSES = new Set([1, 4]);
 
 const OBJECT_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
 
@@ -194,14 +198,6 @@ export const userResolver = {
         });
       }
 
-      // Password activation belongs to completeSignup / updateUserPassword only (#573).
-      if (input.password) {
-        throw new GraphQLError(
-          'Password cannot be set via updateUser. Use completeSignup or password reset.',
-          { extensions: { code: 'BAD_USER_INPUT' } }
-        );
-      }
-
       // Admins updating another user may only toggle contributorBadge.
       if (!isOwnProfile && isAdmin) {
         if (input.contributorBadge === undefined || input.contributorBadge === null) {
@@ -227,15 +223,16 @@ export const userResolver = {
         }
       }
 
-      // Pending invite accounts must complete via completeSignup, not profile edit.
+      // Unfinished invite accounts (status 1/4, no password) must use completeSignup.
       const targetBeforeUpdate = await context.prisma.user.findUnique({
         where: { id: targetId },
-        select: { id: true, password: true, accountStatus: true },
+        select: { id: true, password: true, status: true },
       });
       if (
         targetBeforeUpdate &&
         !targetBeforeUpdate.password &&
-        targetBeforeUpdate.accountStatus === 'pending'
+        targetBeforeUpdate.status != null &&
+        UNFINISHED_INVITE_STATUSES.has(targetBeforeUpdate.status)
       ) {
         throw new GraphQLError('Pending invite accounts must complete signup via completeSignup', {
           extensions: { code: 'FORBIDDEN' },
@@ -305,6 +302,11 @@ export const userResolver = {
           });
         }
         updates.email = email;
+      }
+
+      if (input.password) {
+        const salt = await bcrypt.genSalt(10);
+        updates.password = await bcrypt.hash(input.password, salt);
       }
 
       if (input.avatar !== undefined && input.avatar !== null) {

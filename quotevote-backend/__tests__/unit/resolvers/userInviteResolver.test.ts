@@ -2,6 +2,7 @@ process.env.JWT_SECRET = 'test_secret';
 process.env.NODE_ENV = 'test';
 
 import { GraphQLError } from 'graphql';
+import { Prisma } from '@prisma/client';
 import { userInviteResolver } from '~/data/resolvers/userInviteResolver';
 import * as auth from '~/data/utils/authentication';
 import { CURRENT_TERMS_VERSION } from '~/data/utils/termsPolicy';
@@ -73,7 +74,8 @@ describe('userInviteResolver', () => {
       (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
         id: userId,
         password: 'already-set',
-        accountStatus: 'pending',
+        status: 4,
+        accountStatus: 'active',
         email: 'a@b.com',
       });
 
@@ -91,13 +93,39 @@ describe('userInviteResolver', () => {
       ).rejects.toThrow(/already been completed/);
     });
 
+    it('rejects when invite status is not approved (4)', async () => {
+      const ctx = mockContext();
+      const token = auth.generateInviteSignupToken(userId);
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: userId,
+        password: null,
+        status: 1,
+        accountStatus: 'active',
+        email: 'a@b.com',
+      });
+
+      await expect(
+        userInviteResolver.Mutation.completeSignup(
+          null,
+          {
+            token,
+            username: 'newuser',
+            password: 'Password1',
+            acceptedTermsVersion: CURRENT_TERMS_VERSION,
+          },
+          ctx
+        )
+      ).rejects.toThrow(/not approved/);
+    });
+
     it('creates user password and TermsAcceptance atomically', async () => {
       const ctx = mockContext();
       const token = auth.generateInviteSignupToken(userId);
       (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
         id: userId,
         password: null,
-        accountStatus: 'pending',
+        status: 4,
+        accountStatus: 'active',
         email: 'invitee@example.com',
       });
       (ctx.prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
@@ -137,6 +165,39 @@ describe('userInviteResolver', () => {
       expect(result).toMatchObject({ _id: userId, username: 'newuser' });
     });
 
+    it('rejects when TermsAcceptance write fails (unique constraint)', async () => {
+      const ctx = mockContext();
+      const token = auth.generateInviteSignupToken(userId);
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: userId,
+        password: null,
+        status: 4,
+        accountStatus: 'active',
+        email: 'invitee@example.com',
+      });
+      (ctx.prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      (ctx.prisma.user.update as jest.Mock).mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+          meta: { target: ['userId', 'termsVersion'] },
+        })
+      );
+
+      await expect(
+        userInviteResolver.Mutation.completeSignup(
+          null,
+          {
+            token,
+            username: 'newuser',
+            password: 'Password1',
+            acceptedTermsVersion: CURRENT_TERMS_VERSION,
+          },
+          ctx
+        )
+      ).rejects.toThrow(/Username already exists or terms already accepted/);
+    });
+
     it('rejects a forged session-style token without invite type', async () => {
       const ctx = mockContext();
       await expect(
@@ -163,7 +224,8 @@ describe('userInviteResolver', () => {
         email: 'invitee@example.com',
         username: 'invitee@example.com',
         password: null,
-        accountStatus: 'pending',
+        status: 4,
+        accountStatus: 'active',
       });
 
       const result = await userInviteResolver.Query.verifyInviteSignupToken(null, { token }, ctx);
@@ -183,6 +245,24 @@ describe('userInviteResolver', () => {
         email: 'invitee@example.com',
         username: 'done',
         password: 'hashed',
+        status: 4,
+        accountStatus: 'active',
+      });
+
+      const result = await userInviteResolver.Query.verifyInviteSignupToken(null, { token }, ctx);
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when invite was not approved', async () => {
+      const ctx = mockContext();
+      const token = auth.generateInviteSignupToken(userId);
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: userId,
+        email: 'invitee@example.com',
+        username: 'invitee@example.com',
+        password: null,
+        status: 1,
         accountStatus: 'active',
       });
 
@@ -193,14 +273,15 @@ describe('userInviteResolver', () => {
   });
 
   describe('requestUserAccess', () => {
-    it('creates a pending user without password', async () => {
+    it('creates a requested invite (status 1) without password', async () => {
       const ctx = mockContext({ user: null });
       (ctx.prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
       (ctx.prisma.user.create as jest.Mock).mockResolvedValue({
         id: userId,
         email: 'new@example.com',
         username: 'new@example.com',
-        accountStatus: 'pending',
+        status: 1,
+        accountStatus: 'active',
         password: null,
       });
 
@@ -214,12 +295,63 @@ describe('userInviteResolver', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             email: 'new@example.com',
-            accountStatus: 'pending',
+            status: 1,
             password: null,
           }),
         })
       );
       expect(result._id).toBe(userId);
+    });
+  });
+
+  describe('sendUserInviteApproval', () => {
+    it('sets status 4 on approve', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: userId,
+        email: 'invitee@example.com',
+        username: 'invitee@example.com',
+        password: null,
+        status: 1,
+      });
+      (ctx.prisma.user.update as jest.Mock).mockResolvedValue({});
+
+      const result = await userInviteResolver.Mutation.sendUserInviteApproval(
+        null,
+        { userId, inviteStatus: '4' },
+        ctx
+      );
+
+      expect(ctx.prisma.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: { status: 4 },
+      });
+      expect(result.code).toBe('SUCCESS');
+      expect(result.inviteToken).toBeDefined();
+    });
+
+    it('sets status 2 on decline without disabling the account', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: userId,
+        email: 'invitee@example.com',
+        username: 'invitee@example.com',
+        password: null,
+        status: 1,
+      });
+      (ctx.prisma.user.update as jest.Mock).mockResolvedValue({});
+
+      const result = await userInviteResolver.Mutation.sendUserInviteApproval(
+        null,
+        { userId, inviteStatus: '2' },
+        ctx
+      );
+
+      expect(ctx.prisma.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: { status: 2 },
+      });
+      expect(result.message).toMatch(/declined/);
     });
   });
 });

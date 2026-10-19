@@ -131,10 +131,15 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       select: { id: true, username: true, email: true },
     });
     if (existingUser) {
+      // OR can match on either field — identify which one(s) collided.
+      const usernameConflict = existingUser.username === req.body.username;
+      const emailConflict = existingUser.email === req.body.email;
       const conflict =
-        existingUser.username === req.body.username
+        usernameConflict && !emailConflict
           ? `Username ${existingUser.username} already exists!`
-          : 'Email already exists!';
+          : emailConflict && !usernameConflict
+            ? 'Email already exists!'
+            : 'Username or email already exists!';
       res.status(409).json({
         error_message: conflict,
       });

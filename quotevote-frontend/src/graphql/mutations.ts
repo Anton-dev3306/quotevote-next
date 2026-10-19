@@ -546,32 +546,6 @@ export const ENABLE_USER = gql`
 `;
 
 /**
- * Complete invite-based signup with Terms acceptance (#573).
- * Invite token authorizes only this mutation — not a general session.
- */
-export const COMPLETE_SIGNUP = gql`
-  mutation completeSignup(
-    $token: String!
-    $username: String!
-    $password: String!
-    $acceptedTermsVersion: String!
-  ) {
-    completeSignup(
-      token: $token
-      username: $username
-      password: $password
-      acceptedTermsVersion: $acceptedTermsVersion
-    ) {
-      _id
-      username
-      email
-      name
-      accountStatus
-    }
-  }
-`;
-
-/**
  * Update user profile mutation
  * Used by Settings component for updating user information
  *

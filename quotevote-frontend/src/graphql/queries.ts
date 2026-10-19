@@ -76,16 +76,6 @@ export const VERIFY_PASSWORD_RESET_TOKEN = gql`
 `;
 
 /**
- * Verify limited-purpose invite signup token (#573).
- * Does not establish a session — use completeSignup to finish onboarding.
- */
-export const VERIFY_INVITE_SIGNUP_TOKEN = gql`
-  query VerifyInviteSignupToken($token: String!) {
-    verifyInviteSignupToken(token: $token)
-  }
-`;
-
-/**
  * Get groups query for post creation
  */
 export const GROUPS_QUERY = gql`

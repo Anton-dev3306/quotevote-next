@@ -5,12 +5,10 @@
 | Concern                  | Location                                                                    |
 | ------------------------ | --------------------------------------------------------------------------- |
 | Current version string   | `quotevote-backend/app/data/utils/termsPolicy.ts` (`CURRENT_TERMS_VERSION`) |
-| Content digest (SHA-256) | Same file (`CURRENT_TERMS_HASH`) — must match frontend                      |
-| Published Terms text     | `quotevote-frontend/src/lib/legal/termsSource.txt`                          |
-| Frontend mirror          | `quotevote-frontend/src/lib/legal/termsPolicy.ts`                           |
-| Contract test            | `quotevote-frontend/src/__tests__/utils/termsPolicy.test.ts`                |
+| Content digest (SHA-256) | Same file (`CURRENT_TERMS_HASH`)                                             |
+| Published Terms text     | Follows #568 (frontend `termsSource.txt` + contract test land there)        |
 
-When Terms text changes: update `termsSource.txt`, recompute the SHA-256 hex digest, bump `CURRENT_TERMS_VERSION` and `CURRENT_TERMS_HASH` in **both** packages, then re-run the frontend contract test.
+When Terms text changes (with #568): update the published source, recompute the SHA-256 hex digest, bump `CURRENT_TERMS_VERSION` and `CURRENT_TERMS_HASH` in both packages, then re-run the frontend contract test.
 
 The server never trusts a client-supplied hash or timestamp. It only accepts `acceptedTermsVersion === CURRENT_TERMS_VERSION` and stores the server constants.
 
@@ -31,16 +29,20 @@ Acceptance records are **not** exposed on public User GraphQL fields. Future sup
 ## Enforcement
 
 1. **`POST /auth/register`** — requires `acceptedTermsVersion`. Nested `prisma.user.create` + `termsAcceptances.create` (MongoDB replica set / Prisma transactions already required by the migration strategy).
-2. **`completeSignup(token, username, password, acceptedTermsVersion)`** — invite completion only. Invite JWTs have `type: invite_signup` and are rejected by `verifyToken` for general sessions.
-3. **`updateUser`** — cannot set passwords or finish pending invite accounts.
+2. **`completeSignup(token, username, password, acceptedTermsVersion)`** — invite completion only. Invite JWTs have `type: invite_signup` and are rejected by `verifyToken` for general sessions. Requires `User.status === 4` and no password.
+3. **`updateUser`** — may still hash password changes for completed accounts (Settings). Unfinished invites (`status` 1 or 4, no password) must use `completeSignup`.
 4. **`POST /auth/guest`** — removed (consentless accounts).
+
+Frontend wiring (`completeSignup` / `verifyInviteSignupToken` / `/terms`) ships with #568 so beta can keep talking to the live API until cutover.
 
 ## Invitation flow (ported for Terms gate)
 
-1. `requestUserAccess` — creates `accountStatus: pending` user (email as temporary username, no password).
-2. `sendUserInviteApproval` (admin) — on approve, emails a one-day invite-signup token (not a session JWT).
-3. `verifyInviteSignupToken` — public query for the signup form.
-4. `completeSignup` — sets username/password, activates account, writes `TermsAcceptance` with `invite_completion`.
+Invite lifecycle uses legacy numeric `User.status` (admin UI / `userInviteRequests` already filter on these). Do **not** overload `accountStatus` for invite state — that field stays for moderation (`active` / `disabled` / …).
+
+1. `requestUserAccess` — creates (or re-opens) a user with `status: 1`, email as temporary username, no password.
+2. `sendUserInviteApproval` (admin) — approve → `status: 4` and email a one-day invite-signup token; decline → `status: 2` (not `accountStatus: disabled`).
+3. `verifyInviteSignupToken` — public query for the signup form (requires `status: 4`, no password).
+4. `completeSignup` — sets username/password, ensures `accountStatus: active`, writes `TermsAcceptance` with `invite_completion`.
 
 ## Retention and cutover
 
