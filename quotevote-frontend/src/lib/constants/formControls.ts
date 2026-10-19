@@ -14,3 +14,10 @@ export const FOCUS_RING_CLASS =
 
 /** White on the brand green is 2.6:1; this darker green keeps button text readable (5.2:1). */
 export const PRIMARY_ACTION_CLASS = "bg-[#2f7a4c] text-white hover:bg-[#276640]";
+
+/**
+ * Switch track colors that read at 3:1 against the card: the default "off"
+ * track (#e4e4e7) and the brand-green "on" track (2.6:1) are both too faint.
+ */
+export const SWITCH_CLASS =
+  "data-[state=unchecked]:bg-[#8a8a93] data-[state=checked]:bg-[#2f7a4c] dark:data-[state=unchecked]:bg-[#6e7681] dark:data-[state=checked]:bg-[#2f7a4c]";

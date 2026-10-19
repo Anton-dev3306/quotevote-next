@@ -33,6 +33,7 @@ import {
   FOCUS_RING_CLASS,
   FORM_FIELD_CLASS,
   PRIMARY_ACTION_CLASS,
+  SWITCH_CLASS,
 } from '@/lib/constants/formControls'
 import type { SettingsUserData } from '@/types/settings'
 import type { UpdateUserResponse } from '@/types/test'
@@ -151,7 +152,7 @@ export default function SettingsPageClient() {
       </Link>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
               <section className="space-y-4" aria-labelledby="settings-account-heading">
@@ -202,7 +203,8 @@ export default function SettingsPageClient() {
                       id="dark-mode"
                       checked={localDarkMode}
                       onCheckedChange={handleThemeToggle}
-                      className={FOCUS_RING_CLASS}
+                      size="lg"
+                      className={cn(SWITCH_CLASS, FOCUS_RING_CLASS)}
                     />
                   </div>
                 </div>
@@ -222,7 +224,8 @@ export default function SettingsPageClient() {
                       id="neo-brutalism"
                       checked={localBrutalism}
                       onCheckedChange={handleBrutalismToggle}
-                      className={FOCUS_RING_CLASS}
+                      size="lg"
+                      className={cn(SWITCH_CLASS, FOCUS_RING_CLASS)}
                     />
                   </div>
                 </div>

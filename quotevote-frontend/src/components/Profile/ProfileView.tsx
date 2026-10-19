@@ -23,31 +23,13 @@ export const ACTIVITY_FILTERS: Array<{
   { id: 'QUOTED', label: 'Quoted' },
 ];
 
-// Activity filter styling mapping with accessible contrast (RC1-009)
-export const ACTIVITY_FILTER_STYLES: Record<
-  ProfileActivityType,
-  { activeBorder: string; activeText: string; color: string }
-> = {
-  POSTED: {
-    activeBorder: 'border-primary',
-    activeText: 'text-foreground',
-    color: '#52b274',
-  },
-  VOTED: {
-    activeBorder: 'border-[#52b274]',
-    activeText: 'text-[#52b274]',
-    color: '#52b274',
-  },
-  COMMENTED: {
-    activeBorder: 'border-[#ca8a04]',
-    activeText: 'text-[#ca8a04]',
-    color: '#FDD835',
-  },
-  QUOTED: {
-    activeBorder: 'border-[#c026d3]',
-    activeText: 'text-[#c026d3]',
-    color: '#E36DFA',
-  },
+// Dot beside each filter, matching the activity card it shows: post cards have
+// the blue border, votes are green, comments yellow and quotes pink.
+export const ACTIVITY_FILTER_DOT_COLORS: Record<ProfileActivityType, string> = {
+  POSTED: '#56b3ff',
+  VOTED: '#52b274',
+  COMMENTED: '#FDD835',
+  QUOTED: '#E36DFA',
 };
 
 export const ALL_ACTIVITY_TYPES: ProfileActivityType[] = [
@@ -176,7 +158,7 @@ export function ProfileView({
                 ) : (
                   <span
                     className="size-2 rounded-full"
-                    style={{ backgroundColor: ACTIVITY_FILTER_STYLES[id].color }}
+                    style={{ backgroundColor: ACTIVITY_FILTER_DOT_COLORS[id] }}
                     aria-hidden="true"
                   />
                 )}

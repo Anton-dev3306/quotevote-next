@@ -220,7 +220,7 @@ export default function EditProfilePageClient({
       </div>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <h2 className="mb-4 text-base font-semibold">Photo</h2>
           <div className="flex flex-wrap items-center gap-4">
             <DisplayAvatar
@@ -240,7 +240,7 @@ export default function EditProfilePageClient({
       </Card>
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
               <h2 className="text-base font-semibold">Details</h2>

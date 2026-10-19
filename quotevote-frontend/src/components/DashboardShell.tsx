@@ -153,7 +153,7 @@ function AuthenticatedAccountSheet({
           <Button
             type="button"
             variant="ghost"
-            className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-destructive/10 dark:text-red-400 dark:hover:text-red-400"
+            className="w-full justify-start text-[#c62828] hover:text-[#c62828] hover:bg-destructive/10 dark:text-[#ff6b6b] dark:hover:text-[#ff6b6b]"
             onClick={() => {
               close();
               onLogout();
@@ -456,7 +456,7 @@ export function DashboardShell({
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-destructive/10">
                         <LogOut className="size-4 text-red-500" />
                       </div>
-                      <span className="text-[13px] font-semibold text-red-600 dark:text-red-400">Sign out</span>
+                      <span className="text-[13px] font-semibold text-[#c62828] dark:text-[#ff6b6b]">Sign out</span>
                     </DropdownMenuItem>
                   </div>
                 </DropdownMenuContent>
