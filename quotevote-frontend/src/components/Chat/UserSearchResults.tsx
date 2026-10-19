@@ -217,7 +217,7 @@ const UserSearchResults: FC<UserSearchResultsProps> = ({ searchQuery }) => {
                 {addingUserId === user._id ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
-                  'Add Buddy'
+                  'Add'
                 )}
               </Button>
             )}
