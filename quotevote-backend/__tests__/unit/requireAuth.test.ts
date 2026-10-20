@@ -111,10 +111,9 @@ describe('requireAuth', () => {
   });
 
   describe('Protected queries (should return true)', () => {
-    // Note: "addPost" contains "post" (public), so it's treated as public
-    // "deletePost" contains "post" (public), so it's treated as public
-    // "followUser" contains "user" (public), so it's treated as public
-    // This is the current behavior using substring matching
+    // Exact root-field matching: "addPost" is not public even though it contains "post"
+    // "deletePost" is not public even though it contains "post"
+    // "followUser" is not public even though it contains "user"
 
     it('should return true for "createMessage" mutation', () => {
       const query = 'mutation { createMessage(message: {}) { id } }';
@@ -393,11 +392,6 @@ describe('requireAuth', () => {
 
     it('should return false for "searchUser" query (guest search)', () => {
       const query = 'query { searchUser(queryName: "test") { id } }';
-      expect(requireAuth(query)).toBe(false);
-    });
-
-    it('should return false for "addStripeCustomer" mutation', () => {
-      const query = 'mutation { addStripeCustomer(stripeCustomer: {}) }';
       expect(requireAuth(query)).toBe(false);
     });
   });

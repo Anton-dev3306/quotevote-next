@@ -272,24 +272,6 @@ describe('requireAuth Integration Tests', () => {
       expect(res.body.errors).toBeUndefined();
       expect(res.body.data).toBeDefined();
     });
-
-    it('should reject GET with public body query but protected URL query without authentication', async () => {
-      const bodyQuery = '{ posts }';
-      const urlQuery = '{ notifications { id } }';
-
-      const res = await request(app)
-        .get('/graphql')
-        .query({ query: urlQuery })
-        .send({ query: bodyQuery });
-
-      expect([200, 500]).toContain(res.status);
-
-      if (res.status === 200 && res.body.errors) {
-        expect(res.body.errors).toBeDefined();
-        expect(res.body.errors[0].message).toBe('Auth token not found in request');
-        expect(res.body.errors[0].extensions?.code).toBe('UNAUTHENTICATED');
-      }
-    });
   });
 
   describe('Protected Mutations (Auth Required)', () => {

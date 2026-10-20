@@ -284,6 +284,19 @@ describe('GraphQL Context Factory (createHttpContext)', () => {
       expect(context.user).toBeNull();
     });
 
+    it('rejects a GET whose body query is public but URL query is protected', async () => {
+      const req = mockReq({
+        method: 'GET',
+        body: { query: 'query { posts { id } }' },
+        query: { query: 'query { notifications { id } }' },
+      });
+      const res = mockRes();
+
+      await expect(createHttpContext({ req, res })).rejects.toMatchObject({
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    });
+
     it('allows protected query when valid authentication is present', async () => {
       const authUser = {
         id: 'auth-user-id',
