@@ -109,10 +109,10 @@ export default function DateRangeFilter({ startDate, endDate, onDateChange }: Da
               onClick={() => applyQuickRange(key)}
               aria-pressed={isActive}
               className={cn(
-                'px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors',
+                'inline-flex min-h-8 items-center rounded-md border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]',
                 isActive
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-foreground/80 hover:bg-muted/60 hover:text-foreground'
+                  ? 'border-[#2f7a4c] bg-[#52b274]/10 text-[#2f6f4a] dark:border-[#7fdc9c] dark:text-[#7fdc9c]'
+                  : 'border-[#8a8a93] bg-background text-foreground hover:bg-muted/60 dark:border-[#6e7681]'
               )}
             >
               {label}
@@ -126,7 +126,7 @@ export default function DateRangeFilter({ startDate, endDate, onDateChange }: Da
         <div className="space-y-1">
           <label
             htmlFor="filter-date-from"
-            className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            className="block text-[11px] font-semibold uppercase tracking-wider text-foreground/75"
           >
             From
           </label>
@@ -136,13 +136,13 @@ export default function DateRangeFilter({ startDate, endDate, onDateChange }: Da
             value={localFrom}
             max={localTo || undefined}
             onChange={(e) => handleFromChange(e.target.value)}
-            className="w-full px-2 py-1.5 text-xs border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/60"
+            className="min-h-9 w-full rounded-md border border-[#8a8a93] bg-background px-2 py-1.5 text-sm text-foreground focus:border-[#2f7a4c] focus:outline-none focus:ring-2 focus:ring-[#52b274]/40 dark:border-[#6e7681] dark:focus:border-[#7fdc9c]"
           />
         </div>
         <div className="space-y-1">
           <label
             htmlFor="filter-date-to"
-            className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            className="block text-[11px] font-semibold uppercase tracking-wider text-foreground/75"
           >
             To
           </label>
@@ -152,7 +152,7 @@ export default function DateRangeFilter({ startDate, endDate, onDateChange }: Da
             value={localTo}
             min={localFrom || undefined}
             onChange={(e) => handleToChange(e.target.value)}
-            className="w-full px-2 py-1.5 text-xs border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/60"
+            className="min-h-9 w-full rounded-md border border-[#8a8a93] bg-background px-2 py-1.5 text-sm text-foreground focus:border-[#2f7a4c] focus:outline-none focus:ring-2 focus:ring-[#52b274]/40 dark:border-[#6e7681] dark:focus:border-[#7fdc9c]"
           />
         </div>
       </div>

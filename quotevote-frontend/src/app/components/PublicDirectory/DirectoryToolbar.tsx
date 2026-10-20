@@ -2,19 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Calendar, Clock, ListFilter, Search as SearchIcon, Users } from 'lucide-react'
+import { Calendar, ListFilter } from 'lucide-react'
 import { useQuery } from '@apollo/client/react'
 import { useDebounce } from '@/hooks/useDebounce'
 import { GET_GROUP, GROUPS_QUERY } from '@/graphql/queries'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import DateRangeFilter from '@/components/SearchContainer/DateRangeFilter'
 import ActiveFilters from '@/components/SearchContainer/ActiveFilters'
+import { DirectorySearch } from './DirectorySearch'
+import { DirectoryFiltersPanel } from './DirectoryFiltersPanel'
 import type { Group } from '@/types/components'
-
-type SortOrder = 'desc' | 'asc'
+import type { DirectorySort, DirectoryTopic } from '@/types/directory'
 
 interface GroupsQueryData {
   groups: Group[]
@@ -24,18 +24,26 @@ interface GroupQueryData {
   group?: { _id: string; title: string }
 }
 
-function chipClass(active: boolean): string {
+function controlClass(active: boolean): string {
   return cn(
-    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium shrink-0 transition-colors',
+    'inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-1 focus-visible:ring-offset-background',
     active
-      ? 'border-[#52b274]/40 bg-[#52b274]/10 text-[#52b274]'
-      : 'border-border bg-background text-foreground hover:bg-muted/60'
+      ? 'border-[#2f7a4c] bg-[#52b274]/10 text-[#2f6f4a] dark:border-[#7fdc9c] dark:text-[#7fdc9c]'
+      : 'border-[#8a8a93] bg-background text-foreground hover:bg-muted/60 dark:border-[#6e7681]'
   )
 }
 
+function formatDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 /**
- * Search + filter chips for the public directory.
- * Chips wrap instead of scrolling sideways (no horizontal overflow).
+ * Home page discovery (#515): Search first, then Filters (sort, Following,
+ * topic) and Date range. Every control changes the same URL-driven results,
+ * and the active filters are listed underneath so it's clear why posts show.
+ * Controls wrap instead of scrolling sideways (no horizontal overflow).
  */
 export function DirectoryToolbar(): ReactElement {
   const router = useRouter()
@@ -46,7 +54,6 @@ export function DirectoryToolbar(): ReactElement {
   const q = searchParams.get('q') || ''
   const from = searchParams.get('from') || ''
   const to = searchParams.get('to') || ''
-  const sortOrder = (searchParams.get('sort') || 'desc') as SortOrder
   const interactions = searchParams.get('interactions') === 'true'
   const following = searchParams.get('following') === 'true'
   const groupId = searchParams.get('group') || ''
@@ -74,6 +81,8 @@ export function DirectoryToolbar(): ReactElement {
     errorPolicy: 'all',
   })
   const publicGroups = (groupsData?.groups ?? []).filter((g) => g.privacy !== 'private')
+  const topics: DirectoryTopic[] = publicGroups.map((g) => ({ _id: g._id, title: g.title }))
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const updateParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -109,27 +118,51 @@ export function DirectoryToolbar(): ReactElement {
 
   // Keyed on the debounced input only: removing the search pill clears `q` in the URL,
   // and re-running on `q` would re-apply the stale debounced text.
+  // A `#word` that isn't a topic yet (still being typed) waits for a suggestion
+  // or Enter instead of searching the text; an exact topic name applies at once.
   useEffect(() => {
     if (debouncedSearch === q || debouncedSearch === lastApplied.current) return
+    const typedTag = /^\s*#(\S*)\s*$/.exec(debouncedSearch)?.[1]?.toLowerCase()
+    if (typedTag !== undefined && !publicGroups.some((g) => g.title.toLowerCase() === typedTag)) {
+      return
+    }
     applySearch(debouncedSearch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch])
 
-  const isLatest = sortOrder === 'desc' && !interactions
+  const sort: DirectorySort = interactions ? 'popular' : 'latest'
   const hasDateFilter = !!(from || to)
   const today = new Date().toISOString().split('T')[0]
   const isToday = from === today && to === today
-  const dateLabel = isToday ? 'Today' : 'Date'
+  const dateValue = hasDateFilter
+    ? isToday
+      ? 'Today'
+      : from && to
+        ? `${formatDay(from)} – ${formatDay(to)}`
+        : from
+          ? `From ${formatDay(from)}`
+          : `Until ${formatDay(to)}`
+    : ''
+  const activeFilterCount = (interactions ? 1 : 0) + (following ? 1 : 0) + (groupId ? 1 : 0)
 
-  const handleLatest = () => {
-    updateParams({ sort: 'desc', interactions: null })
+  const handleSortChange = (next: DirectorySort) => {
+    updateParams({ interactions: next === 'popular' ? 'true' : null, sort: null })
   }
 
-  const handleTogglePopular = () => {
-    updateParams({
-      interactions: interactions ? null : 'true',
-      sort: interactions ? 'desc' : null,
-    })
+  const clearFilters = () => {
+    updateParams({ interactions: null, sort: null, following: null, group: null })
+  }
+
+  const clearAll = () => {
+    setSearchInput('')
+    lastApplied.current = ''
+    updateParams({ q: null, interactions: null, sort: null, following: null, group: null, from: null, to: null })
+  }
+
+  const selectTopic = (topic: DirectoryTopic) => {
+    setSearchInput('')
+    lastApplied.current = ''
+    updateParams({ group: topic._id, q: null })
   }
 
   const groupTitle = groupData?.group?.title
@@ -144,27 +177,27 @@ export function DirectoryToolbar(): ReactElement {
       },
     },
     {
+      key: 'group',
+      label: 'Topic',
+      value: groupId ? (groupTitle ? `#${groupTitle}` : 'Selected') : '',
+      onRemove: () => updateParams({ group: null }),
+    },
+    {
+      key: 'interactions',
+      label: 'Sort',
+      value: interactions ? 'Most popular' : '',
+      onRemove: () => handleSortChange('latest'),
+    },
+    {
       key: 'following',
       label: 'Feed',
       value: following ? 'Following' : '',
       onRemove: () => updateParams({ following: null }),
     },
     {
-      key: 'interactions',
-      label: 'Sort',
-      value: interactions ? 'Most popular' : '',
-      onRemove: handleLatest,
-    },
-    {
-      key: 'group',
-      label: 'Tag',
-      value: groupId ? (groupTitle ? `#${groupTitle}` : 'Selected') : '',
-      onRemove: () => updateParams({ group: null }),
-    },
-    {
       key: 'date',
       label: 'Date',
-      value: hasDateFilter ? (isToday ? 'Today' : [from, to].filter(Boolean).join(' – ')) : '',
+      value: dateValue,
       onRemove: () => updateParams({ from: null, to: null }),
     },
   ]
@@ -172,85 +205,50 @@ export function DirectoryToolbar(): ReactElement {
   return (
     <div
       data-testid="directory-toolbar"
-      className="w-full max-w-2xl mx-auto px-4 pt-3 pb-2 space-y-3 min-w-0 bg-background"
+      className="w-full max-w-2xl mx-auto px-4 pt-3 pb-2 space-y-2.5 min-w-0 bg-background"
     >
-      <form
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault()
-          applySearch(searchInput)
-        }}
-      >
-        <label htmlFor="directory-search" className="sr-only">
-          Search quotes, topics, sources, or use #hashtag
-        </label>
-        <div className="relative">
-          <SearchIcon
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none"
-            aria-hidden
-          />
-          <input
-            id="directory-search"
-            data-testid="directory-search"
-            type="search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search quotes, topics, sources… or use #hashtag"
-            aria-describedby="directory-search-tip"
-            className="w-full h-11 rounded-full border border-border bg-background pl-10 pr-4 text-base md:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#52b274]/40"
-          />
-        </div>
-        <p id="directory-search-tip" className="mt-1.5 px-3.5 text-xs text-muted-foreground">
-          Tip: use #hashtag to filter by tag.
-        </p>
-      </form>
+      <DirectorySearch
+        value={searchInput}
+        onChange={setSearchInput}
+        onSubmit={applySearch}
+        topics={topics}
+        onSelectTopic={selectTopic}
+      />
 
-      <div className="flex flex-wrap items-center gap-1 md:gap-2 min-w-0">
-        <button
-          type="button"
-          data-testid="filter-latest"
-          aria-pressed={isLatest}
-          onClick={handleLatest}
-          className={chipClass(isLatest)}
-        >
-          <Clock className="size-3.5" aria-hidden />
-          Latest
-        </button>
-
-        {isLoggedIn ? (
-          <button
-            type="button"
-            data-testid="filter-following"
-            aria-pressed={following}
-            onClick={() => updateParams({ following: following ? null : 'true' })}
-            className={chipClass(following)}
-          >
-            <Users className="size-3.5" aria-hidden />
-            Following
-          </button>
-        ) : null}
-
-        <Popover>
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
               data-testid="filter-filters"
-              aria-pressed={interactions}
-              className={chipClass(interactions)}
+              aria-label={activeFilterCount ? `Filters, ${activeFilterCount} on` : 'Filters'}
+              className={controlClass(activeFilterCount > 0)}
             >
-              <ListFilter className="size-3.5" aria-hidden />
+              <ListFilter className="size-4" aria-hidden />
               Filters
+              {activeFilterCount ? (
+                <span
+                  aria-hidden
+                  className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#2f7a4c] px-1.5 text-[11px] font-bold leading-5 text-white"
+                >
+                  {activeFilterCount}
+                </span>
+              ) : null}
             </button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-56 p-3">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <Checkbox
-                checked={interactions}
-                onCheckedChange={handleTogglePopular}
-                id="directory-filter-popular"
-              />
-              <span className="text-sm">Most popular</span>
-            </label>
+          <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] p-0">
+            <DirectoryFiltersPanel
+              sort={sort}
+              onSortChange={handleSortChange}
+              showFollowing={isLoggedIn}
+              following={following}
+              onFollowingChange={(next) => updateParams({ following: next ? 'true' : null })}
+              topics={topics}
+              topicId={groupId}
+              onTopicChange={(id) => updateParams({ group: id || null })}
+              onClear={clearFilters}
+              onDone={() => setFiltersOpen(false)}
+            />
           </PopoverContent>
         </Popover>
 
@@ -259,14 +257,14 @@ export function DirectoryToolbar(): ReactElement {
             <button
               type="button"
               data-testid="filter-date"
-              aria-pressed={hasDateFilter}
-              className={chipClass(hasDateFilter)}
+              aria-label={hasDateFilter ? `Date range, ${dateValue}` : 'Date range'}
+              className={controlClass(hasDateFilter)}
             >
-              <Calendar className="size-3.5" aria-hidden />
-              {dateLabel}
+              <Calendar className="size-4" aria-hidden />
+              {hasDateFilter ? dateValue : 'Date range'}
             </button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-72 p-3">
+          <PopoverContent align="start" className="w-[min(18rem,calc(100vw-2rem))] p-3">
             <DateRangeFilter
               startDate={from}
               endDate={to}
@@ -278,7 +276,7 @@ export function DirectoryToolbar(): ReactElement {
         </Popover>
       </div>
 
-      <ActiveFilters filters={activeFilters} />
+      <ActiveFilters filters={activeFilters} onClearAll={clearAll} />
     </div>
   )
 }

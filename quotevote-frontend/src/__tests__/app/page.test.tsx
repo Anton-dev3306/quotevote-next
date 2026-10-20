@@ -75,16 +75,16 @@ describe('Public directory (`/`)', () => {
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument()
   })
 
-  it('places search and filters above the posts, with Latest selected by default', () => {
+  it('places Search, Filters and Date range above the posts (#515)', () => {
     renderDirectory()
     expect(screen.getByTestId('directory-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('directory-search')).toHaveAttribute(
       'placeholder',
-      'Search quotes, topics, sources… or use #hashtag'
+      'Search quotes, topics and sources'
     )
     // iOS Safari zooms focused inputs under 16px; text-base keeps mobile at 16px
     expect(screen.getByTestId('directory-search')).toHaveClass('text-base')
-    expect(screen.getByTestId('filter-latest')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByTestId('filter-latest')).not.toBeInTheDocument()
     expect(screen.getByTestId('filter-filters')).toBeInTheDocument()
     expect(screen.queryByTestId('filter-tag')).not.toBeInTheDocument()
     expect(screen.getByTestId('filter-date')).toBeInTheDocument()
