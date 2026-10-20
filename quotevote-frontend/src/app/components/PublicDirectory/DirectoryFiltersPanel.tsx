@@ -13,7 +13,7 @@ const SORTS: Array<{ value: DirectorySort; label: string; hint: string }> = [
 const optionClass =
   "flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2.5 text-sm text-foreground transition-colors hover:bg-muted/70 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#52b274]";
 const radioClass =
-  "size-4 shrink-0 cursor-pointer accent-[#2f7a4c] focus-visible:outline-none dark:accent-[#7fdc9c]";
+  "size-4 shrink-0 cursor-pointer accent-[#2f7a4c] focus-visible:outline-none dark:accent-[#7fdc9c] dark:[color-scheme:dark]";
 const legendClass =
   "mb-1 px-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
