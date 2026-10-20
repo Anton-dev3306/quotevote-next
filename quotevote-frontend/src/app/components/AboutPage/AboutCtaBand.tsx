@@ -6,8 +6,7 @@ import { ArrowRight, Heart } from "lucide-react";
 import { useMutation } from "@apollo/client/react";
 import { REQUEST_USER_ACCESS_MUTATION } from "@/graphql/mutations";
 import { Globe } from "@/components/Icons";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { parseRequestAccessEmail } from "@/lib/validation/requestAccessSchema";
 
 /**
  * Three-column CTA: request invite, newsletter-style email, and donate.
@@ -24,15 +23,17 @@ export function AboutCtaBand() {
     setErrorMessage("");
     setSuccessMessage("");
 
-    const trimmed = email.trim();
-    if (!EMAIL_PATTERN.test(trimmed)) {
-      setErrorMessage("Please enter a valid email address.");
+    const parsed = parseRequestAccessEmail(email);
+    if (!parsed.success) {
+      setErrorMessage(parsed.message);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await requestUserAccess({ variables: { requestUserAccessInput: { email: trimmed } } });
+      await requestUserAccess({
+        variables: { requestUserAccessInput: { email: parsed.email } },
+      });
       setSuccessMessage("Thank you — we'll be in touch soon.");
       setEmail("");
     } catch (error) {

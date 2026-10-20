@@ -473,16 +473,6 @@ export interface FollowButtonProps {
    */
   showIcon?: boolean;
   /**
-   * Label shown while following. Defaults to "Un-Follow".
-   * Post detail uses "Following".
-   */
-  followingLabel?: string;
-  /**
-   * Button variant for the text Follow control
-   * @default 'default'
-   */
-  buttonVariant?: 'default' | 'outline';
-  /**
    * Additional CSS classes
    */
   className?: string;

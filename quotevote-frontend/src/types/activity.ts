@@ -152,6 +152,8 @@ export interface PaginatedActivityListProps {
   onPageChange?: (page: number) => void
   onPageSizeChange?: (pageSize: number) => void
   onRefresh?: () => void
+  /** When filters are applied: shown as "Show all activity" in the empty state. */
+  onClearFilters?: () => void
   
   // Styling
   className?: string

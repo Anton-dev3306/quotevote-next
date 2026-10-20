@@ -9,6 +9,7 @@ import { GET_BUDDY_LIST, GET_ROSTER } from '@/graphql/queries';
 import { usePresenceSubscription } from '@/hooks/usePresenceSubscription';
 import { useRosterManagement } from '@/hooks/useRosterManagement';
 import { cn } from '@/lib/utils';
+import { PRESENCE_DOT_CLASS, PRESENCE_LABEL, PRESENCE_TEXT_CLASS, toPresenceStatus } from '@/lib/constants/presence';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { DisplayAvatar } from '@/components/DisplayAvatar';
 import BuddyItemList from './BuddyItemList';
@@ -100,7 +101,7 @@ export default function BuddyListWithPresence({ search = '' }: BuddyListWithPres
 
     if (!currentUser?._id) {
         return (
-            <div className="p-5 text-center text-gray-400">
+            <div className="p-5 text-center text-muted-foreground">
                 Please log in to view your buddy list
             </div>
         );
@@ -110,7 +111,7 @@ export default function BuddyListWithPresence({ search = '' }: BuddyListWithPres
 
     if (buddyListError || rosterError) {
         return (
-            <div className="p-5 text-center text-red-500">
+            <div role="alert" className="p-5 text-center text-[#c62828] dark:text-[#ff6b6b]">
                 Error loading buddy list. Please try refreshing.
             </div>
         );
@@ -151,34 +152,33 @@ export default function BuddyListWithPresence({ search = '' }: BuddyListWithPres
         }
     });
 
+    // Name or username; a leading @ is optional (#531).
+    const query = search.trim().replace(/^@/, '').toLowerCase();
     const filterBuddies = (list: BuddyItem[]) => {
         if (!list) return [];
-        if (!search) return list;
+        if (!query) return list;
         return list.filter((b) => {
             const name = b.Text?.toLowerCase() || '';
-            return name.includes(search.toLowerCase());
+            const username = b.user?.username?.toLowerCase() || '';
+            return name.includes(query) || username.includes(query);
         });
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'online': return 'bg-[#52b274] shadow-[#52b274]/20';
-            case 'away': return 'bg-amber-400 shadow-amber-400/20';
-            case 'dnd': return 'bg-red-500 shadow-red-500/20';
-            default: return 'bg-gray-400';
-        }
-    };
+    const shownCount = ['online', 'away', 'dnd', 'offline'].reduce(
+        (total, status) => total + filterBuddies(groupedBuddies[status]).length,
+        0
+    );
 
     return (
-        <div className="flex-1 overflow-auto flex flex-col h-full bg-white">
+        <div className="flex-1 overflow-auto flex flex-col h-full bg-background">
             {/* Pending Requests */}
             {pendingRequests.length > 0 && (
-                <div className="p-2 bg-gray-50 border-b border-gray-200">
+                <div className="p-2 bg-muted/60 border-b border-border">
                     <div className="flex items-center gap-2 px-2 mb-2">
-                        <span className="text-xs font-bold uppercase text-gray-500 tracking-wider">
+                        <span className="text-xs font-bold uppercase text-muted-foreground tracking-wider">
                             Pending Requests
                         </span>
-                        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#52b274] text-white text-[10px] font-bold">
+                        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#2f7a4c] text-white text-[10px] font-bold">
                             {pendingRequests.length}
                         </span>
                     </div>
@@ -187,32 +187,36 @@ export default function BuddyListWithPresence({ search = '' }: BuddyListWithPres
                             const buddy = req.buddy;
                             if (!buddy) return null;
                             return (
-                                <div key={req.id} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                                <div key={req.id} className="flex items-center gap-2 p-2 bg-card rounded-lg border border-border shadow-sm">
                                     <DisplayAvatar
                                         avatar={buddy.avatar as string | Record<string, unknown> | undefined}
                                         username={buddy.username}
                                         size={32}
                                     />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-semibold truncate">
+                                        <div className="text-sm font-semibold text-foreground truncate">
                                             {buddy.name || buddy.username}
                                         </div>
-                                        <div className="text-xs text-gray-500 italic">
+                                        <div className="text-xs text-muted-foreground italic">
                                             Wants to be your buddy
                                         </div>
                                     </div>
                                     <div className="flex gap-1">
                                         <button
+                                            type="button"
                                             onClick={() => handleAcceptBuddy(req.id)}
-                                            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#52b274] text-white hover:bg-[#4a9e63] transition-colors"
+                                            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#2f7a4c] text-white hover:bg-[#276640] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                                             title="Accept"
+                                            aria-label={`Accept ${buddy.name || buddy.username}`}
                                         >
                                             <Check size={16} />
                                         </button>
                                         <button
+                                            type="button"
                                             onClick={() => handleDeclineBuddy(req.id)}
-                                            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                                            className="w-8 h-8 flex items-center justify-center rounded-full border border-[#8a8a93] text-muted-foreground hover:bg-red-50 hover:text-[#c62828] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] dark:border-[#6e7681] dark:hover:bg-red-950/40 dark:hover:text-[#ff6b6b]"
                                             title="Decline"
+                                            aria-label={`Decline ${buddy.name || buddy.username}`}
                                         >
                                             <X size={16} />
                                         </button>
@@ -231,16 +235,22 @@ export default function BuddyListWithPresence({ search = '' }: BuddyListWithPres
 
                 return (
                     <div key={status}>
-                        <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100">
-                            <span className={cn("w-2 h-2 rounded-full shadow-sm ring-1 ring-white", getStatusColor(status))} />
-                            <span className="text-xs font-bold uppercase text-gray-500 tracking-wider">
-                                {status === 'dnd' ? 'Do Not Disturb' : status} ({filtered.length})
-                            </span>
+                        <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 bg-muted/95 backdrop-blur-sm border-b border-border">
+                            <span className={cn("w-2.5 h-2.5 rounded-full", PRESENCE_DOT_CLASS[toPresenceStatus(status)])} aria-hidden="true" />
+                            <h3 className={cn("text-xs! leading-4! font-bold uppercase tracking-wider", status === 'offline' ? 'text-muted-foreground' : PRESENCE_TEXT_CLASS[toPresenceStatus(status)])}>
+                                {PRESENCE_LABEL[toPresenceStatus(status)]} ({filtered.length})
+                            </h3>
                         </div>
                         <BuddyItemList buddyList={filtered} />
                     </div>
                 );
             })}
+
+            {query && shownCount === 0 && (
+                <p className="px-6 py-10 text-center text-sm text-muted-foreground" data-testid="buddy-empty-search">
+                    No buddies match “{search.trim()}”.
+                </p>
+            )}
         </div>
     );
 }

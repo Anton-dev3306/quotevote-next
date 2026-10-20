@@ -9,6 +9,10 @@ import { render, screen, within, fireEvent } from "../utils/test-utils";
 import userEvent from "@testing-library/user-event";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useAppStore } from "@/store";
+import { useQuery } from "@apollo/client/react";
+import { GET_NOTIFICATIONS } from "@/graphql/queries";
+
+const mockUseQuery = useQuery as unknown as jest.Mock;
 
 const mockPush = jest.fn();
 
@@ -41,8 +45,8 @@ jest.mock("@/components/Navbars/NavSearch", () => ({
   __esModule: true,
   default: () => null,
 }));
-jest.mock("@/components/DashboardSidebars", () => ({
-  DashboardSidebars: () => null,
+jest.mock("@/components/Notifications/NotificationsPanel", () => ({
+  NotificationsPanel: () => <div data-testid="notifications-panel-mount" />,
 }));
 jest.mock("@/components/SubmitPost", () => ({
   SubmitPost: () => null,
@@ -157,7 +161,7 @@ describe("DashboardShell authenticated sidebar (#492)", () => {
     await openAccountMenu();
     const menu = screen.getByTestId("authenticated-account-menu");
 
-    expect(within(menu).getByRole("link", { name: /settings & privacy/i })).toHaveAttribute(
+    expect(within(menu).getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
       "/settings"
     );
@@ -221,5 +225,145 @@ describe("DashboardShell authenticated sidebar (#492)", () => {
 
     expect(useAppStore.getState().user.data._id).toBeUndefined();
     expect(mockPush).toHaveBeenCalledWith("/auths/login");
+  });
+});
+
+describe("DashboardShell notifications in the main navigation (#532)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useAppStore.getState().resetStore();
+    useAppStore.getState().setUserData(regularUser);
+  });
+
+  function renderShell() {
+    return render(
+      <DashboardShell>
+        <div>feed</div>
+      </DashboardShell>
+    );
+  }
+
+  it("toggles the Notifications panel from the desktop navbar", () => {
+    renderShell();
+    const bell = screen.getByTestId("desktop-notifications-button");
+    expect(bell).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(bell);
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(true);
+    expect(bell).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(bell);
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(false);
+  });
+
+  it("keeps Messages open on desktop when Notifications opens", () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("desktop-messages-button"));
+    fireEvent.click(screen.getByTestId("desktop-notifications-button"));
+
+    expect(useAppStore.getState().chat.open).toBe(true);
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(true);
+  });
+
+  it("opens the panel from the mobile tab instead of leaving the page", () => {
+    renderShell();
+    const tab = screen.getByTestId("mobile-notifications-button");
+    expect(tab).toHaveTextContent("Notifications");
+
+    fireEvent.click(tab);
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(true);
+    expect(mockPush).not.toHaveBeenCalledWith("/notifications");
+  });
+
+  it("shows only one bottom sheet at a time on mobile", () => {
+    renderShell();
+    const nav = screen.getByRole("navigation", { name: "Mobile navigation" });
+
+    fireEvent.click(within(nav).getByRole("button", { name: "Messages" }));
+    expect(useAppStore.getState().chat.open).toBe(true);
+
+    fireEvent.click(screen.getByTestId("mobile-notifications-button"));
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(true);
+    expect(useAppStore.getState().chat.open).toBe(false);
+
+    fireEvent.click(within(nav).getByRole("button", { name: "Messages" }));
+    expect(useAppStore.getState().chat.open).toBe(true);
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(false);
+  });
+
+  it("announces the number of new notifications on both buttons", () => {
+    mockUseQuery.mockImplementation((query: unknown) =>
+      query === GET_NOTIFICATIONS
+        ? {
+            data: {
+              notifications: [
+                { _id: "a", status: "new" },
+                { _id: "b", status: "new" },
+                { _id: "c", status: "seen" },
+              ],
+            },
+            loading: false,
+          }
+        : { data: undefined, loading: false }
+    );
+    renderShell();
+
+    expect(screen.getByTestId("desktop-notifications-button")).toHaveAccessibleName(
+      "Notifications, 2 new"
+    );
+    expect(screen.getByTestId("mobile-notifications-button")).toHaveAccessibleName(
+      "Notifications, 2 new"
+    );
+    mockUseQuery.mockImplementation(() => ({ data: undefined, loading: false }));
+  });
+
+  it("mounts the panel only for signed-in users", () => {
+    renderShell();
+    expect(screen.getByTestId("notifications-panel-mount")).toBeInTheDocument();
+  });
+
+  it("closes the panel on sign-out", () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("desktop-notifications-button"));
+    useAppStore.getState().logout();
+    expect(useAppStore.getState().ui.notificationsOpen).toBe(false);
+  });
+});
+
+describe("DashboardShell account dropdown (#536)", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
+  it("names the item Settings and drops the subtext under each item", async () => {
+    useAppStore.getState().setUserData(regularUser);
+    const user = userEvent.setup();
+    render(
+      <DashboardShell>
+        <div>feed</div>
+      </DashboardShell>
+    );
+
+    // The desktop navbar trigger (the mobile one opens the Sheet instead).
+    const trigger = screen
+      .getAllByTestId("user-profile-menu")
+      .find((el) => el.getAttribute("aria-haspopup") === "menu");
+    await user.click(trigger!);
+    const menu = await screen.findByRole("menu");
+
+    expect(within(menu).getByRole("menuitem", { name: "Your Profile" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Settings" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    for (const subtext of [
+      "View and edit profile",
+      "Manage your account",
+      "See you next time!",
+      "Settings & Privacy",
+    ]) {
+      expect(within(menu).queryByText(subtext)).not.toBeInTheDocument();
+    }
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
+    expect(mockPush).toHaveBeenCalledWith("/settings");
   });
 });

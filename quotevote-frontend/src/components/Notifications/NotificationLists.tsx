@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 interface NotificationListsProps {
   notifications: Notification[];
   pageView?: boolean;
+  /** Called after a notification sends the user somewhere (e.g. to close the panel). */
+  onNavigate?: () => void;
 }
 
 const getNotificationIcon = (notificationType: Notification['notificationType']) => {
@@ -86,7 +88,11 @@ const formatTimeAgo = (created: string | number | Date): string => {
   });
 };
 
-export function NotificationLists({ notifications, pageView = false }: NotificationListsProps) {
+export function NotificationLists({
+  notifications,
+  pageView = false,
+  onNavigate,
+}: NotificationListsProps) {
   const router = useRouter();
   const client = useApolloClient();
   const ensureAuth = useGuestGuard();
@@ -127,10 +133,16 @@ export function NotificationLists({ notifications, pageView = false }: Notificat
 
     if (notificationType === 'FOLLOW') {
       router.push(`/profile/${userBy.username}`);
+    } else if (post?.deleted) {
+      // The post page can't tell a deleted post from a bad link, so say which one it is.
+      router.push(`${toAppPostUrl(post.url)}?deleted=1`);
     } else if (post) {
       setSelectedPost(post._id);
       router.push(toAppPostUrl(post.url));
+    } else {
+      return;
     }
+    onNavigate?.();
   };
 
   if (!notifications || notifications.length === 0) {
@@ -147,7 +159,7 @@ export function NotificationLists({ notifications, pageView = false }: Notificat
       className={cn(
         'relative overflow-auto',
         pageView ? 'w-full' : 'w-full max-w-sm',
-        notifications.length < 5 ? 'min-h-0' : 'max-h-[75vh]'
+        !pageView && notifications.length >= 5 && 'max-h-[75vh]'
       )}
     >
       <div className="space-y-2">
@@ -195,6 +207,11 @@ export function NotificationLists({ notifications, pageView = false }: Notificat
                   {notification.notificationType !== 'FOLLOW' && notification.label && (
                     <p className="text-sm text-muted-foreground mt-1 truncate">
                       &ldquo;{stringLimit(notification.label, pageView ? 1000 : 50)}&rdquo;
+                    </p>
+                  )}
+                  {notification.post?.deleted && (
+                    <p className="mt-1 text-xs font-medium text-muted-foreground">
+                      This post has been deleted
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">

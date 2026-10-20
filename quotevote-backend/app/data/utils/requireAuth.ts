@@ -13,7 +13,6 @@ import { logger } from './logger';
  * List of public GraphQL queries/mutations that don't require authentication
  */
 const PUBLIC_QUERIES: readonly string[] = [
-  'addStripeCustomer',
   'requestUserAccess',
   'checkDuplicateEmail',
   'sendInvestorMail',

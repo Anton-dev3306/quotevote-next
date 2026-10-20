@@ -5,7 +5,7 @@
  * - Loading state renders PostSkeleton
  * - Error state redirects to /error
  * - Successful data fetch renders Post component
- * - Missing postId shows "Post not found"
+ * - Missing postId or a null post shows the unavailable state (#532)
  * - Page state management via setSelectedPage
  */
 
@@ -20,6 +20,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
   }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 // Mock Zustand store
@@ -28,6 +29,7 @@ jest.mock('@/store', () => ({
   useAppStore: (selector: (state: unknown) => unknown) => {
     const state = {
       setSelectedPage: mockSetSelectedPage,
+      setNotificationsOpen: jest.fn(),
       user: {
         data: {
           _id: 'user-123',
@@ -115,15 +117,29 @@ describe('PostController Component', () => {
     })
   })
 
-  describe('Missing postId', () => {
-    it('shows post not found when postId is empty', () => {
+  describe('Missing post', () => {
+    it('shows the unavailable state when postId is empty', () => {
       render(<PostController postId="" />)
-      expect(screen.getByText(/Post not found/i)).toBeInTheDocument()
+      expect(screen.getByTestId('post-unavailable')).toBeInTheDocument()
+      expect(screen.getByText('This post isn\u2019t available.')).toBeInTheDocument()
     })
 
-    it('shows post not found when postId is undefined', () => {
+    it('shows the unavailable state when postId is undefined', () => {
       render(<PostController />)
-      expect(screen.getByText(/Post not found/i)).toBeInTheDocument()
+      expect(screen.getByTestId('post-unavailable')).toBeInTheDocument()
+    })
+
+    it('shows the unavailable state when the post query returns null', async () => {
+      const mocks = [
+        {
+          request: { query: GET_POST, variables: { postId: 'gone-post-id' } },
+          result: { data: { post: null } },
+        },
+      ]
+      render(<PostController postId="gone-post-id" />, { mocks })
+      expect(await screen.findByTestId('post-unavailable')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /go to home/i })).toHaveAttribute('href', '/')
+      expect(mockPush).not.toHaveBeenCalled()
     })
   })
 

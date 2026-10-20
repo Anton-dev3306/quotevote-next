@@ -427,4 +427,21 @@ describe('Pagination Component', () => {
       expect(nav).toHaveClass('max-w-full')
     })
   })
+
+  describe('Contrast and focus (#528)', () => {
+    it('marks the current page with the accessible green, not the brand green', () => {
+      render(<Pagination {...defaultProps} currentPage={3} />)
+      const current = screen.getByRole('button', { name: 'Page 3' })
+      expect(current).toHaveAttribute('aria-current', 'page')
+      expect(current.className).toContain('bg-[#2f7a4c]')
+      expect(current.className).not.toContain('bg-[#52b274]')
+    })
+
+    it('gives every page button a visible keyboard focus ring', () => {
+      render(<Pagination {...defaultProps} />)
+      for (const name of ['Previous page', 'Next page', 'Page 2']) {
+        expect(screen.getByRole('button', { name }).className).toContain('focus-visible:ring-2')
+      }
+    })
+  })
 })

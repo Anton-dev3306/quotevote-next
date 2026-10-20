@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { useMutation, useQuery } from '@apollo/client/react'
-import { Camera, Loader2, Moon, Sun, LogOut, Sparkles } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useMutation } from '@apollo/client/react'
+import { ChevronRight, Loader2, Moon, Sun, Sparkles, UserPen } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -19,111 +19,61 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { DisplayAvatar } from '@/components/DisplayAvatar'
 import { UPDATE_USER } from '@/graphql/mutations'
-import { GET_USER, GET_USER_BIO } from '@/graphql/queries'
+import { GET_USER } from '@/graphql/queries'
 import { replaceGqlError } from '@/lib/utils/replaceGqlError'
 import { useAppStore } from '@/store/useAppStore'
-import { removeToken } from '@/lib/auth'
 import { useTheme } from '@/context/ThemeContext'
-import { useProfileBackground } from '@/hooks/useProfileBackground'
-import {
-  getProfileBackgroundStyle,
-  PROFILE_BG_COLORS,
-  PROFILE_BG_PATTERNS,
-} from '@/lib/utils/profileBackground'
 import { cn } from '@/lib/utils'
 import {
-  PROFILE_BIO_HTML_PATTERN,
-  PROFILE_BIO_MAX_LENGTH,
-} from '@/lib/constants/profile'
+  FOCUS_RING_CLASS,
+  FORM_FIELD_CLASS,
+  PRIMARY_ACTION_CLASS,
+  SWITCH_CLASS,
+} from '@/lib/constants/formControls'
 import type { SettingsUserData } from '@/types/settings'
 import type { UpdateUserResponse } from '@/types/test'
 
 const settingsSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(50, 'Name must be under 50 characters'),
-  username: z
-    .string()
-    .min(4, 'Username must be at least 4 characters')
-    .max(50, 'Username must be under 50 characters'),
-  email: z.string().email('Please enter a valid email'),
-  password: z.string().refine((val) => !val || val.length >= 8, {
-    message: 'Password must be at least 8 characters',
-  }),
-  bio: z
-    .string()
-    .max(PROFILE_BIO_MAX_LENGTH, `About must be ${PROFILE_BIO_MAX_LENGTH} characters or fewer`)
-    .refine((val) => !PROFILE_BIO_HTML_PATTERN.test(val), {
-      message: 'About must be plain text without HTML',
-    }),
+  email: z.string().trim().email('Please enter a valid email'),
 })
 
 type SettingsFormValues = z.infer<typeof settingsSchema>
 
+/**
+ * Settings (#536): account and app preferences only. Photo, name, username,
+ * About and banner are edited from the profile (Edit profile). Sign out lives
+ * in the account menu.
+ */
 export default function SettingsPageClient() {
-  const router = useRouter()
   const userData = useAppStore((state) => state.user.data) as SettingsUserData | undefined
   const setUserData = useAppStore((state) => state.setUserData)
   const { setTheme, isDarkMode, neoBrutalism, toggleNeoBrutalism } = useTheme()
-  const {
-    color: profileBgColor,
-    pattern: profileBgPattern,
-    setColor: setProfileBgColor,
-    setPattern: setProfileBgPattern,
-    hydrated: profileBgHydrated,
-  } = useProfileBackground()
 
   const username = userData?.username ?? ''
   const email = userData?.email ?? ''
-  const name = userData?.name ?? ''
   const userId = userData?.id ?? userData?._id ?? ''
 
   const [localDarkMode, setLocalDarkMode] = useState(isDarkMode)
   const [originalDarkMode, setOriginalDarkMode] = useState(isDarkMode)
   const [localBrutalism, setLocalBrutalism] = useState(neoBrutalism)
-  const [originalBgColor, setOriginalBgColor] = useState(profileBgColor)
-  const [originalBgPattern, setOriginalBgPattern] = useState(profileBgPattern)
-  const [bgBaselineReady, setBgBaselineReady] = useState(false)
 
   const [updateUser, { loading }] = useMutation<UpdateUserResponse>(UPDATE_USER)
-  const { data: bioData, error: bioError } = useQuery<{
-    user?: { _id: string; bio?: string | null } | null
-  }>(GET_USER_BIO, {
-    variables: { username },
-    skip: !username,
-    errorPolicy: 'all',
-  })
-  const bioSupported = Boolean(username) && !bioError
-  const fetchedBio = bioData?.user?.bio ?? userData?.bio ?? ''
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
-    defaultValues: { name, username, email, password: '', bio: fetchedBio },
+    defaultValues: { email },
+    values: { email },
+    resetOptions: { keepDirtyValues: true },
   })
-
-  useEffect(() => {
-    if (!bioSupported) return
-    const currentBio = form.getValues('bio')
-    if (currentBio === fetchedBio) return
-    if (form.formState.dirtyFields.bio) return
-    form.setValue('bio', fetchedBio, { shouldDirty: false })
-  }, [bioSupported, fetchedBio, form])
 
   useEffect(() => {
     setLocalDarkMode(isDarkMode)
   }, [isDarkMode])
-
-  useEffect(() => {
-    if (!profileBgHydrated || bgBaselineReady) return
-    setOriginalBgColor(profileBgColor)
-    setOriginalBgPattern(profileBgPattern)
-    setBgBaselineReady(true)
-  }, [profileBgHydrated, profileBgColor, profileBgPattern, bgBaselineReady])
 
   const handleThemeToggle = useCallback(
     (checked: boolean) => {
@@ -139,52 +89,19 @@ export default function SettingsPageClient() {
   }, [toggleNeoBrutalism])
 
   const themeDirty = localDarkMode !== originalDarkMode
-  const bgDirty =
-    bgBaselineReady &&
-    (profileBgColor.toLowerCase() !== originalBgColor.toLowerCase() ||
-      profileBgPattern !== originalBgPattern)
-  const isFormDirty = form.formState.isDirty || themeDirty || bgDirty
-
-  const handleSignOut = useCallback(() => {
-    removeToken()
-    router.push('/auths/login')
-  }, [router])
+  const isFormDirty = form.formState.isDirty || themeDirty
 
   const onSubmit = async (values: SettingsFormValues) => {
-    const { password, bio, ...otherValues } = values
-
-    // Background is localStorage-only; if that's the only change, just accept baseline.
-    if (!form.formState.isDirty && !themeDirty && bgDirty) {
-      setOriginalBgColor(profileBgColor)
-      setOriginalBgPattern(profileBgPattern)
-      toast.success('Settings saved successfully')
-      return
-    }
-
     const userInput: Record<string, unknown> = {
       _id: userId,
-      ...otherValues,
       themePreference: localDarkMode ? 'dark' : 'light',
     }
-    if (password) {
-      userInput.password = password
-    }
-    if (bioSupported) {
-      userInput.bio = bio ?? ''
-    }
+    if (form.formState.dirtyFields.email) userInput.email = values.email
 
     try {
       const result = await updateUser({
         variables: { user: userInput },
-        refetchQueries: [
-          {
-            query: GET_USER,
-            variables: { username: otherValues.username },
-          },
-          ...(bioSupported
-            ? [{ query: GET_USER_BIO, variables: { username: otherValues.username } }]
-            : []),
-        ],
+        refetchQueries: [{ query: GET_USER, variables: { username } }],
         awaitRefetchQueries: true,
       })
       const updated = result.data?.updateUser
@@ -196,277 +113,141 @@ export default function SettingsPageClient() {
           themePreference: localDarkMode ? 'dark' : 'light',
         })
         setOriginalDarkMode(localDarkMode)
-        setOriginalBgColor(profileBgColor)
-        setOriginalBgPattern(profileBgPattern)
-        toast.success('Settings saved successfully')
-        form.reset({
-          name: updated.name ?? otherValues.name,
-          username: updated.username ?? otherValues.username,
-          email: updated.email ?? otherValues.email,
-          password: '',
-          bio: bioSupported ? (bio ?? '') : '',
-        })
+        toast.success('Settings saved')
+        form.reset({ email: updated.email ?? values.email })
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save settings'
-      toast.error(replaceGqlError(message))
+      const message = replaceGqlError(err instanceof Error ? err.message : 'Failed to save settings')
+      if (/email/i.test(message)) {
+        form.setError('email', { message }, { shouldFocus: true })
+      } else {
+        toast.error(message)
+      }
     }
   }
 
   return (
     <div className="py-6 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings & Privacy</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Manage your account details and preferences
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <p className="mt-1 text-sm text-foreground/75">Your account and app preferences.</p>
       </div>
 
+      <Link
+        href={username ? `/profile/${username}/edit` : '/profile'}
+        data-testid="settings-edit-profile-link"
+        className={cn(
+          'flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm transition-colors hover:bg-muted/60',
+          FOCUS_RING_CLASS
+        )}
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+          <UserPen className="size-4" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Edit profile</span>
+          <span className="block text-foreground/75">Photo, name, username, About and banner</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-foreground/60" aria-hidden="true" />
+      </Link>
+
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => router.push(`/profile/${username}/avatar`)}
-                  className="group relative flex-shrink-0"
-                  aria-label="Change avatar"
-                >
-                  <DisplayAvatar
-                    avatar={userData?.avatar as string | Record<string, unknown> | undefined}
-                    username={username}
-                    size={80}
-                    className="ring-2 ring-border"
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Camera className="size-5 text-white" />
-                  </div>
-                </button>
-                <div>
-                  <p className="text-sm font-medium">Profile photo</p>
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/profile/${username}/avatar`)}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Change photo
-                  </button>
-                </div>
-              </div>
-
-              <Separator />
-
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Display Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Your display name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Username</FormLabel>
-                    <FormControl>
-                      <Input placeholder="username" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="you@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {bioSupported && (
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
+              <section className="space-y-4" aria-labelledby="settings-account-heading">
+                <h2 id="settings-account-heading" className="text-base font-semibold">
+                  Account
+                </h2>
                 <FormField
                   control={form.control}
-                  name="bio"
+                  name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>About</FormLabel>
+                      <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Textarea
-                          placeholder="A short, plain-text introduction"
-                          rows={4}
-                          maxLength={PROFILE_BIO_MAX_LENGTH}
+                        <Input
+                          type="email"
+                          autoComplete="email"
+                          placeholder="you@example.com"
+                          className={FORM_FIELD_CLASS}
                           {...field}
                         />
                       </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        {(field.value?.length ?? 0)}/{PROFILE_BIO_MAX_LENGTH}
-                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              )}
+              </section>
 
               <Separator />
 
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="dark-mode">Dark Mode</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {localDarkMode ? 'Dark mode is active' : 'Light mode is active'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {localDarkMode ? (
-                    <Moon className="size-4 text-muted-foreground" />
-                  ) : (
-                    <Sun className="size-4 text-muted-foreground" />
-                  )}
-                  <Switch
-                    id="dark-mode"
-                    checked={localDarkMode}
-                    onCheckedChange={handleThemeToggle}
-                    aria-label="Toggle dark mode"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="neo-brutalism">Neo-Brutalism</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {localBrutalism
-                      ? 'Bold borders, hard shadows, chunky type'
-                      : 'Switch to a raw, high-contrast brutalist look'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-muted-foreground" />
-                  <Switch
-                    id="neo-brutalism"
-                    checked={localBrutalism}
-                    onCheckedChange={handleBrutalismToggle}
-                    aria-label="Toggle neo-brutalism theme"
-                  />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-3">
-                <div className="space-y-0.5">
-                  <Label>Profile Background</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Customize your profile banner color and pattern
-                  </p>
-                </div>
-
-                <div
-                  className="h-20 w-full rounded-md border border-border"
-                  style={getProfileBackgroundStyle(profileBgColor, profileBgPattern)}
-                  aria-label="Profile background preview"
-                  role="img"
-                />
-
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Color</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {PROFILE_BG_COLORS.map((c) => {
-                      const selected = profileBgColor.toLowerCase() === c.toLowerCase()
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setProfileBgColor(c)}
-                          aria-label={`Background color ${c}`}
-                          aria-pressed={selected}
-                          className={cn(
-                            'h-7 w-7 rounded-full border transition-transform hover:scale-110',
-                            selected
-                              ? 'ring-2 ring-offset-2 ring-primary border-transparent'
-                              : 'border-border'
-                          )}
-                          style={{ backgroundColor: c }}
-                        />
-                      )
-                    })}
-                    <label className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                      <span>Custom</span>
-                      <input
-                        type="color"
-                        value={profileBgColor}
-                        onChange={(e) => setProfileBgColor(e.target.value)}
-                        aria-label="Custom background color"
-                        className="h-7 w-9 cursor-pointer rounded border border-border bg-transparent p-0"
-                      />
-                    </label>
+              <section className="space-y-4" aria-labelledby="settings-appearance-heading">
+                <h2 id="settings-appearance-heading" className="text-base font-semibold">
+                  Appearance
+                </h2>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="dark-mode">Dark mode</Label>
+                    <p className="text-sm text-foreground/75">
+                      {localDarkMode ? 'Dark mode is on' : 'Dark mode is off'}
+                    </p>
                   </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Pattern</p>
-                  <div className="flex flex-wrap gap-2">
-                    {PROFILE_BG_PATTERNS.map((p) => (
-                      <button
-                        key={p.value}
-                        type="button"
-                        onClick={() => setProfileBgPattern(p.value)}
-                        aria-pressed={profileBgPattern === p.value}
-                        className={cn(
-                          'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-                          profileBgPattern === p.value
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border text-foreground/80 hover:bg-muted'
-                        )}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center gap-3 flex-wrap">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={handleSignOut}
-                  className="flex items-center gap-2 text-muted-foreground hover:text-destructive"
-                >
-                  <LogOut className="size-4" />
-                  Sign Out
-                </Button>
-
-                <div className="ml-auto">
-                  <Button type="submit" disabled={!isFormDirty || loading}>
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                        Saving...
-                      </>
+                  <div className="flex items-center gap-2">
+                    {localDarkMode ? (
+                      <Moon className="size-4 text-foreground/70" aria-hidden="true" />
                     ) : (
-                      'Save Changes'
+                      <Sun className="size-4 text-foreground/70" aria-hidden="true" />
                     )}
-                  </Button>
+                    <Switch
+                      id="dark-mode"
+                      checked={localDarkMode}
+                      onCheckedChange={handleThemeToggle}
+                      size="lg"
+                      className={cn(SWITCH_CLASS, FOCUS_RING_CLASS)}
+                    />
+                  </div>
                 </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="neo-brutalism">Neo-Brutalism</Label>
+                    <p className="text-sm text-foreground/75">
+                      {localBrutalism
+                        ? 'Bold borders, hard shadows, chunky type'
+                        : 'Switch to a raw, high-contrast brutalist look'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-foreground/70" aria-hidden="true" />
+                    <Switch
+                      id="neo-brutalism"
+                      checked={localBrutalism}
+                      onCheckedChange={handleBrutalismToggle}
+                      size="lg"
+                      className={cn(SWITCH_CLASS, FOCUS_RING_CLASS)}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <Separator />
+
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={!isFormDirty || loading}
+                  className={cn(PRIMARY_ACTION_CLASS, FOCUS_RING_CLASS)}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save changes'
+                  )}
+                </Button>
               </div>
             </form>
           </Form>

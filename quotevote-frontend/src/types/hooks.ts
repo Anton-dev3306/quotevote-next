@@ -342,3 +342,13 @@ export interface RosterSubscriptionResult {
   /** Roster entry data from subscription */
   roster: RosterEntryData
 }
+
+/**
+ * Return type for useAutoResizeTextarea hook
+ */
+export interface UseAutoResizeTextareaReturn {
+  /** Ref to attach to the textarea (merge with react-hook-form's ref) */
+  ref: React.RefObject<HTMLTextAreaElement | null>
+  /** Recompute the height, e.g. after a value is set programmatically */
+  resize: () => void
+}

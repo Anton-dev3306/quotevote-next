@@ -13,6 +13,8 @@ export interface NotificationUser {
 export interface NotificationPost {
   _id: string;
   url: string;
+  /** Set when the author or an admin deleted the post after the notification was sent. */
+  deleted?: boolean | null;
 }
 
 export interface Notification {

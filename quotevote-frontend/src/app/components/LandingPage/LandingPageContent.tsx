@@ -36,6 +36,7 @@ import { SEARCH, GET_FEATURED_POSTS } from '@/graphql/queries';
 import { REQUEST_USER_ACCESS_MUTATION } from '@/graphql/mutations';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toAppPostUrl } from '@/lib/utils/sanitizeUrl';
+import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema';
 import type { Post } from '@/types/post';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ const socialLinks = [
 
 const baseStats = [
   { value: '100%', label: 'Open Source', icon: Globe },
-  { value: '0', label: 'Ads or trackers', icon: ShieldOff },
+  { value: '0', label: 'Ads', icon: ShieldOff },
   { value: '∞', label: 'Community-driven', icon: Users },
 ] as const;
 
@@ -351,7 +352,7 @@ export function LandingPageContent({
           </div>
 
           <div className="flex items-center justify-center mt-6 gap-0">
-            {(['Open Source', 'Ad-Free', 'Community-Driven', 'No Tracking'] as const).map(
+            {(['Open Source', 'Ad-Free', 'Community-Driven'] as const).map(
               (label, i, arr) => (
                 <React.Fragment key={label}>
                   <span
@@ -737,7 +738,7 @@ export function LandingPageContent({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 sm:flex-col sm:justify-end sm:self-end">
-                {['No ads', 'No tracking', 'No algorithms', 'Open source'].map((tag) => (
+                {['No ads', 'No algorithms', 'Open source'].map((tag) => (
                   <span
                     key={tag}
                     className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
@@ -1338,12 +1339,11 @@ export function LandingPageContent({
             </div>
 
             {/* Right — impact cards */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { icon: Heart, value: totalRaised, label: 'Total Raised', color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
                 { icon: Users, value: '∞', label: 'Community Members', color: '#2ecc71', bg: '#f0fdf4', border: '#bbf7d0' },
                 { icon: Globe, value: '100%', label: 'Open Source', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
-                { icon: ShieldOff, value: '0', label: 'Ads or Trackers', color: '#2ecc71', bg: '#f0fdf4', border: '#bbf7d0' },
               ].map(({ icon: Icon, value, label, color, bg, border }) => (
                 <div
                   key={label}
@@ -2094,9 +2094,6 @@ function FeaturedPostCard({ post, timeAgo }: { post: Post; timeAgo: string }) {
 
 // ── Be in Touch Section ────────────────────────────────────────────────────
 
-const EMAIL_REGEX =
-  /^(("[\w-+\s]+")|(([\w-+]+(?:\.[\w-+]+)*)|("[\w-+\s]+")([\w-+]+(?:\.[\w-+]+)*)))(@((?:[\w-+]+\.)*\w[\w-+]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$)|(@\[?((25[0-5]\.|2[0-4][\d]\.|1[\d]{2}\.|[\d]{1,2}\.))((25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\.){2}(25[0-5]|2[0-4][\d]|1[\d]{2}|[\d]{1,2})\]?$)/i;
-
 function BeInTouchSection() {
   const [email, setEmail] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -2110,16 +2107,17 @@ function BeInTouchSection() {
     setErrorMessage('');
     setSuccessMessage('');
 
-    const trimmed = email.trim();
-
-    if (!EMAIL_REGEX.test(trimmed)) {
-      setErrorMessage('Please enter a valid email address.');
+    const parsed = parseRequestAccessEmail(email);
+    if (!parsed.success) {
+      setErrorMessage(parsed.message);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await requestUserAccess({ variables: { requestUserAccessInput: { email: trimmed } } });
+      await requestUserAccess({
+        variables: { requestUserAccessInput: { email: parsed.email } },
+      });
       setSuccessMessage("Thank you for requesting access! We'll be in touch soon.");
       setEmail('');
     } catch (error) {

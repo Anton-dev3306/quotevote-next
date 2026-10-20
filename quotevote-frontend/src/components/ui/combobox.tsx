@@ -31,6 +31,12 @@ export interface ComboboxProps {
   triggerTestId?: string
   createOptionTestId?: string
   errorTestId?: string
+  /** Extra classes for the trigger button, e.g. to match surrounding form fields. */
+  triggerClassName?: string
+  /** Optional icon shown before the trigger text (e.g. a # for tags). */
+  startIcon?: React.ReactNode
+  /** Id of an external label; the trigger is then named by that label plus its current value. */
+  ariaLabelledBy?: string
 }
 
 export function Combobox({
@@ -48,7 +54,11 @@ export function Combobox({
   triggerTestId,
   createOptionTestId,
   errorTestId,
+  triggerClassName,
+  startIcon,
+  ariaLabelledBy,
 }: ComboboxProps) {
+  const valueId = React.useId()
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -144,13 +154,26 @@ export function Combobox({
             aria-expanded={open}
             disabled={disabled}
             data-testid={triggerTestId}
+            aria-invalid={error || undefined}
+            aria-labelledby={ariaLabelledBy ? `${ariaLabelledBy} ${valueId}` : undefined}
             className={cn(
               'w-full justify-between text-sm font-normal',
               !displayValue && 'text-muted-foreground',
               error && 'border-destructive',
+              triggerClassName,
             )}
           >
-            <span className="truncate">{displayValue || placeholder}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              {startIcon && (
+                <span
+                  aria-hidden="true"
+                  className={cn('shrink-0', displayValue ? 'text-primary' : 'text-muted-foreground')}
+                >
+                  {startIcon}
+                </span>
+              )}
+              <span id={valueId} className="truncate">{displayValue || placeholder}</span>
+            </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>

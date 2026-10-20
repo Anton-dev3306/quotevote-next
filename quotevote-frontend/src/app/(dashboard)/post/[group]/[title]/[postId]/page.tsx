@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useQuery, useSubscription } from '@apollo/client/react'
 import { WifiOff } from 'lucide-react'
 import PostController from '@/components/Post/PostController'
+import PostUnavailable from '@/components/Post/PostUnavailable'
 import PostActionList from '@/components/PostActions/PostActionList'
 import PostChatSend from '@/components/PostChat/PostChatSend'
 import MobileDiscussionSplit from '@/components/Post/MobileDiscussionSplit'
@@ -49,11 +50,7 @@ export default function PostDetailPage(): React.ReactNode {
   const postId = params?.postId
 
   if (!postId) {
-    return (
-      <div className="flex items-center justify-center min-h-[40vh]">
-        <p className="text-muted-foreground">Post not found</p>
-      </div>
-    )
+    return <PostUnavailable />
   }
 
   return <PostLayout postId={postId} />
@@ -71,6 +68,13 @@ function PostLayout({ postId }: { postId: string }) {
 
   const setMobileDiscussionOpen = useAppStore((s) => s.setMobileDiscussionOpen)
   const setLinkedPassage = useAppStore((s) => s.setLinkedPassage)
+
+  // Same query as PostController and the discussion pane, so this shares their request.
+  const { data: postData, loading: postLoading } = useQuery<PostQueryData>(GET_POST, {
+    variables: { postId },
+    fetchPolicy: 'cache-first',
+  })
+  const postMissing = !postLoading && !!postData && !postData.post
   const setFocusedComment = useAppStore((s) => s.setFocusedComment)
 
   useEffect(() => {
@@ -153,6 +157,11 @@ function PostLayout({ postId }: { postId: string }) {
       onCountChange={setDiscussionCount}
     />
   )
+
+  // A deleted or missing post gets one explanatory state, not an empty discussion beside it.
+  if (postMissing) {
+    return <PostUnavailable />
+  }
 
   // SSR and hydration share this shell so matchMedia cannot swap the tree.
   // After mount, pick portrait-mobile split vs desktop/landscape columns.
@@ -319,7 +328,7 @@ function InteractionSection({
   return (
     <div className="flex flex-col h-full">
       {!hideHeader && (
-        <div data-discussion-header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-background shrink-0">
+        <div data-discussion-header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-card shrink-0">
           <span className="text-sm font-semibold text-foreground/75">
             Discussion · {postActions.length}
           </span>
@@ -332,7 +341,7 @@ function InteractionSection({
           <span>Live updates paused. Reconnecting...</span>
         </div>
       )}
-      <div data-discussion-scroll="true" className="flex-1 overflow-y-auto overscroll-contain">
+      <div data-discussion-scroll="true" className="flex-1 overflow-y-auto overscroll-contain bg-background">
         <PostActionList
           postActions={postActions}
           loading={postLoading}
@@ -344,7 +353,7 @@ function InteractionSection({
         />
       </div>
       {messageRoomId && (
-        <div className="border-t border-border px-4 py-3 bg-background shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="border-t border-border px-4 py-3 bg-card shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <PostChatSend
             messageRoomId={messageRoomId}
             title={postTitle ?? undefined}

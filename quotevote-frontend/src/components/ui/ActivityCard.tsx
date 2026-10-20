@@ -40,7 +40,7 @@ function ActivityHeader({
     >
       <Button
         variant="ghost"
-        className="h-10 px-0 py-0 text-base font-medium hover:underline"
+        className="h-10 px-0 py-0 text-base font-medium hover:underline focus-visible:ring-2 focus-visible:ring-current"
         onClick={(e) => {
           e.stopPropagation()
           if (handleRedirectToProfile) {
@@ -50,7 +50,8 @@ function ActivityHeader({
       >
         {name}
       </Button>
-      <span className="text-sm text-muted-foreground">
+      {/* The card's own text color, faded: the theme grey is unreadable on the coloured cards. */}
+      <span className="text-sm opacity-80">
         {formattedDate} @ {time}
       </span>
     </div>
@@ -93,7 +94,8 @@ function ActivityContent({
     <div data-testid="activity-content" className="flex items-start gap-3 min-h-[130px]">
       <button
         type="button"
-        className="cursor-pointer shrink-0 rounded-full leading-none"
+        aria-label={`${username}'s profile`}
+        className="cursor-pointer shrink-0 rounded-full leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-2"
         onClick={(e) => {
           e.stopPropagation()
           if (handleRedirectToProfile) {
@@ -140,21 +142,24 @@ function ActivityActions({
 }) {
   return (
     <div className="flex items-center gap-2 ml-auto">
-      <span className="text-sm text-muted-foreground">{interactions.length}</span>
+      <span className="text-sm opacity-80">{interactions.length}</span>
       <Button
         variant="ghost"
         size="icon"
-        className="h-auto w-auto p-0"
+        // 32px target. The card's own text color, so the saved state also shows on the
+        // colored cards (amber on the yellow comment card was close to invisible).
+        className="-m-1.5 size-8 rounded-md p-0 text-current hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-current"
         onClick={(e) => {
           e.stopPropagation()
           if (onLike) {
             onLike(liked || false, e)
           }
         }}
-        aria-label={liked ? 'Unbookmark' : 'Bookmark'}
+        aria-label={liked ? 'Remove saved post' : 'Save post'}
+        aria-pressed={Boolean(liked)}
       >
         {liked ? (
-          <BookmarkCheck className="size-5" />
+          <BookmarkCheck className="size-5" fill="currentColor" fillOpacity={0.3} />
         ) : (
           <Bookmark className="size-5" />
         )}
@@ -211,6 +216,7 @@ export const ActivityCard = memo(function ActivityCard({
       data-chrome={isPosted ? 'standard-blue' : 'activity'}
       className={cn(
         'min-w-[350px] min-h-[200px] cursor-pointer text-neutral-900',
+        'focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#52b274]',
         'sm:max-w-full sm:min-w-full sm:w-full',
         isPosted
           ? 'rounded-[7px] overflow-hidden bg-card border-0 shadow-none'
@@ -245,6 +251,18 @@ export const ActivityCard = memo(function ActivityCard({
           : undefined
       }
       onClick={onCardClick}
+      // Keyboard: the card opens the post like a click (#536 audit). Keys pressed on the
+      // avatar, name or Save buttons inside are theirs, not the card's.
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onCardClick()
+        }
+      }}
+      tabIndex={0}
+      role="article"
+      aria-label={post?.title ? `${activityType ? `${activityType.toLowerCase()}: ` : ''}${post.title}` : 'Activity'}
     >
       <CardContent className="pt-1">
         <ActivityContent

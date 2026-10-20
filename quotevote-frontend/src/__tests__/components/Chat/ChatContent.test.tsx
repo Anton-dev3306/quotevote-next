@@ -5,7 +5,7 @@
  * - Tab switching (chats, groups, buddies)
  * - Room selection and display
  * - Search functionality
- * - Add buddy mode
+ * - Add Buddy panel, separate from the search (#531)
  * - Status editor
  */
 
@@ -42,10 +42,11 @@ jest.mock('@/components/ui/button', () => ({
 // Mock child components
 jest.mock('@/components/Chat/ChatSearchInput', () => ({
   __esModule: true,
-  default: ({ setSearch }: { setSearch: (value: string) => void }) => (
+  default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
     <input
       data-testid="chat-search-input"
-      onChange={(e) => setSearch(e.target.value)}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
       placeholder="Search..."
     />
   ),
@@ -76,9 +77,18 @@ jest.mock('@/components/Chat/ChatTabs', () => ({
 
 jest.mock('@/components/Chat/ChatList', () => ({
   __esModule: true,
-  default: ({ search, filterType }: { search: string; filterType: string }) => (
+  default: ({
+    search,
+    filterType,
+    onSearchChange,
+  }: {
+    search: string
+    filterType: string
+    onSearchChange?: (value: string) => void
+  }) => (
     <div data-testid="chat-list" data-search={search} data-filter={filterType}>
       Chat List ({filterType})
+      <button onClick={() => onSearchChange?.('#Climate')}>tag Climate</button>
     </div>
   ),
 }))
@@ -97,11 +107,11 @@ jest.mock('@/components/BuddyList/BuddyListWithPresence', () => ({
   ),
 }))
 
-jest.mock('@/components/Chat/UserSearchResults', () => ({
+jest.mock('@/components/Chat/AddBuddyPanel', () => ({
   __esModule: true,
-  default: ({ searchQuery }: { searchQuery: string }) => (
-    <div data-testid="user-search-results" data-query={searchQuery}>
-      User Search Results
+  default: ({ onBack }: { onBack: () => void }) => (
+    <div data-testid="add-buddy-panel">
+      <button onClick={onBack}>Back to buddies</button>
     </div>
   ),
 }))
@@ -216,19 +226,39 @@ describe('ChatContent', () => {
     expect(screen.getByTestId('chat-list')).toHaveAttribute('data-search', 'test search')
   })
 
-  it('shows add buddy mode when add buddy button is clicked', () => {
+  it('opens Add Buddy as its own panel from the Buddies tab, without the search bar (#531)', () => {
     render(<ChatContent />)
 
-    // Switch to buddies tab first
-    const buddiesButton = screen.getByText('Buddies')
-    fireEvent.click(buddiesButton)
+    fireEvent.click(screen.getByText('Buddies'))
+    fireEvent.click(screen.getByText('Add buddy'))
 
-    // Find and click add buddy button
-    const addBuddyButton = screen.getByText('Add New Buddy')
-    fireEvent.click(addBuddyButton)
-
-    expect(screen.getByTestId('user-search-results')).toBeInTheDocument()
+    expect(screen.getByTestId('add-buddy-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('chat-search-input')).not.toBeInTheDocument()
     expect(screen.queryByTestId('buddy-list-with-presence')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Back to buddies'))
+    expect(screen.getByTestId('buddy-list-with-presence')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-search-input')).toBeInTheDocument()
+  })
+
+  it('opens Add Buddy from the header on any tab (#531)', () => {
+    render(<ChatContent />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add buddy' }))
+
+    expect(screen.getByTestId('add-buddy-panel')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Back to buddies'))
+    expect(screen.getByTestId('buddy-list-with-presence')).toBeInTheDocument()
+  })
+
+  it('keeps the search unchanged when switching tabs, and lets a tag set it (#531)', () => {
+    render(<ChatContent />)
+
+    fireEvent.click(screen.getByText('Groups'))
+    fireEvent.click(screen.getByText('tag Climate'))
+
+    expect(screen.getByTestId('chat-search-input')).toHaveValue('#Climate')
+    expect(screen.getByTestId('chat-list')).toHaveAttribute('data-search', '#Climate')
   })
 
   it('opens status editor when status is clicked', () => {

@@ -23,6 +23,9 @@ jest.mock('@/store', () => ({
     }),
 }));
 
+const mockToastSuccess = jest.fn();
+jest.mock('sonner', () => ({ toast: { success: (...args: unknown[]) => mockToastSuccess(...args) } }));
+
 // Mock useGuestGuard
 jest.mock('@/hooks/useGuestGuard', () => ({
   __esModule: true,
@@ -35,6 +38,7 @@ describe('FollowButton', () => {
   beforeEach(() => {
     mockUpdateFollowing.mockClear();
     mockFollowMutation.mockClear();
+    mockToastSuccess.mockClear();
   });
 
   it('renders Follow button when not following', () => {
@@ -48,7 +52,7 @@ describe('FollowButton', () => {
     expect(screen.getByText('Follow')).toBeInTheDocument();
   });
 
-  it('renders Un-Follow button when following', () => {
+  it('renders a filled Following state instead of Un-Follow', () => {
     render(
       <FollowButton
         isFollowing={true}
@@ -56,19 +60,74 @@ describe('FollowButton', () => {
         username="targetuser"
       />
     );
-    expect(screen.getByText('Un-Follow')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Following, select to unfollow' });
+    expect(button).toHaveClass('bg-blue-600', 'text-white');
+    expect(screen.getByText('Following')).toBeInTheDocument();
+    expect(screen.queryByText('Un-Follow')).not.toBeInTheDocument();
   });
 
-  it('renders Following when followingLabel is provided', () => {
+  it('keeps the Follow state outlined, not filled', () => {
+    render(
+      <FollowButton
+        isFollowing={false}
+        profileUserId="profile-user-id"
+        username="targetuser"
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Follow' })).not.toHaveClass('bg-blue-600');
+  });
+
+  it('unfollows from the Following state and confirms it', async () => {
     render(
       <FollowButton
         isFollowing={true}
         profileUserId="profile-user-id"
         username="targetuser"
-        followingLabel="Following"
       />
     );
-    expect(screen.getByText('Following')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Following, select to unfollow' }));
+
+    await waitFor(() => {
+      expect(mockFollowMutation).toHaveBeenCalledWith({
+        variables: { user_id: 'profile-user-id', action: 'un-follow' },
+      });
+      expect(mockToastSuccess).toHaveBeenCalledWith('You unfollowed @targetuser');
+    });
+  });
+
+  it('confirms a follow once the mutation succeeds', async () => {
+    render(
+      <FollowButton
+        isFollowing={false}
+        profileUserId="profile-user-id"
+        username="targetuser"
+      />
+    );
+
+    fireEvent.click(screen.getByText('Follow'));
+
+    await waitFor(() => {
+      expect(mockToastSuccess).toHaveBeenCalledWith("You're following @targetuser");
+    });
+  });
+
+  it('reverts and stays quiet when the follow fails', async () => {
+    mockFollowMutation.mockRejectedValueOnce(new Error('network'));
+    render(
+      <FollowButton
+        isFollowing={false}
+        profileUserId="profile-user-id"
+        username="targetuser"
+      />
+    );
+
+    fireEvent.click(screen.getByText('Follow'));
+
+    await waitFor(() => {
+      expect(mockUpdateFollowing).toHaveBeenLastCalledWith([]);
+    });
+    expect(mockToastSuccess).not.toHaveBeenCalled();
   });
 
   it('calls optimistic update on follow click', async () => {
@@ -114,7 +173,7 @@ describe('FollowButton', () => {
         showIcon
       />
     );
-    expect(screen.getByLabelText('Follow')).toBeInTheDocument();
+    expect(screen.getByLabelText('Follow @targetuser')).toBeInTheDocument();
   });
 
   it('renders unfollow icon when showIcon is true and following', () => {
@@ -126,6 +185,6 @@ describe('FollowButton', () => {
         showIcon
       />
     );
-    expect(screen.getByLabelText('Unfollow')).toBeInTheDocument();
+    expect(screen.getByLabelText('Following @targetuser, select to unfollow')).toBeInTheDocument();
   });
 });

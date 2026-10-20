@@ -1,4 +1,4 @@
-import { render } from '../../utils/test-utils'
+import { render, screen } from '../../utils/test-utils'
 import PostSkeleton from '../../../components/Post/PostSkeleton'
 
 describe('PostSkeleton Component', () => {
@@ -13,11 +13,17 @@ describe('PostSkeleton Component', () => {
     expect(animated).toBeInTheDocument()
   })
 
-  it('renders vote column skeleton', () => {
+  it('matches the card layout: tag pill first, no vote row (#528)', () => {
     const { container } = render(<PostSkeleton />)
-    // Vote column has rounded square placeholders
-    const votePlaceholders = container.querySelectorAll('[class*="rounded"]')
-    expect(votePlaceholders.length).toBeGreaterThan(0)
+    const firstCard = container.querySelector('[aria-hidden="true"]')
+    expect(firstCard?.querySelector('.rounded-full')).toBeInTheDocument()
+    expect(firstCard?.textContent).toBe('')
+  })
+
+  it('announces loading once and hides the placeholder shapes from screen readers', () => {
+    render(<PostSkeleton />)
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…')
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
   })
 
   it('renders multiple skeleton placeholder divs', () => {

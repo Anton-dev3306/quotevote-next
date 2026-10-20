@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 
 import { REQUEST_USER_ACCESS_MUTATION } from '@/graphql/mutations';
 import { GET_CHECK_DUPLICATE_EMAIL } from '@/graphql/queries';
-import { requestAccessEmailSchema } from '@/lib/validation/requestAccessSchema';
+import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema';
 import type { RequestAccessFormProps } from '@/types/components';
 import { PersonalForm } from './PersonalForm';
 
@@ -32,18 +32,17 @@ export function RequestAccessForm({ onSuccess }: RequestAccessFormProps) {
   const onSubmit = async () => {
     setErrorMessage('');
 
-    const validationResult = requestAccessEmailSchema.safeParse({ email: userDetails });
-    if (!validationResult.success) {
-      setErrorMessage(
-        validationResult.error.issues[0]?.message || 'Please enter a valid email address'
-      );
+    const parsed = parseRequestAccessEmail(userDetails);
+    if (!parsed.success) {
+      setErrorMessage(parsed.message);
       return;
     }
+    const { email } = parsed;
 
     try {
       const { data } = await client.query({
         query: GET_CHECK_DUPLICATE_EMAIL,
-        variables: { email: userDetails },
+        variables: { email },
         fetchPolicy: 'network-only',
       });
 
@@ -55,7 +54,7 @@ export function RequestAccessForm({ onSuccess }: RequestAccessFormProps) {
         return;
       }
 
-      await requestUserAccess({ variables: { requestUserAccessInput: { email: userDetails } } });
+      await requestUserAccess({ variables: { requestUserAccessInput: { email } } });
       setRequestInviteSuccessful(true);
       toast.success('Request submitted successfully!');
       if (onSuccess) onSuccess();

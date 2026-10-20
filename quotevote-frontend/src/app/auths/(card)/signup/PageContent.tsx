@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -68,28 +68,38 @@ export default function SignupPageContent() {
   })
 
   const verifiedUser = tokenData?.verifyUserPasswordResetToken
+  // The address the invite was approved for. It stays on the account (#592).
+  const invitedEmail =
+    token && typeof verifiedUser?.email === 'string' && verifiedUser.email
+      ? verifiedUser.email
+      : undefined
 
   const [updateUser] = useMutation<UpdateUserData>(UPDATE_USER)
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
   })
 
+  useEffect(() => {
+    if (invitedEmail) setValue('email', invitedEmail)
+  }, [invitedEmail, setValue])
+
   const onSubmit = async (values: SignupFormData) => {
     setSubmitting(true)
     try {
       if (token && verifiedUser) {
-        // Invite-based signup: update the existing user via GraphQL
+        // Invite-based signup: update the existing user via GraphQL. The email is
+        // left out so the account keeps the address the invite was approved for.
         setToken(token)
         const result = await updateUser({
           variables: {
             user: {
               _id: verifiedUser._id,
-              email: values.email,
               name: '',
               username: values.username,
               password: values.password,
@@ -175,7 +185,21 @@ export default function SignupPageContent() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" placeholder="you@example.com" {...register('email')} data-testid="signup-email-input" />
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            {...register('email')}
+            readOnly={Boolean(invitedEmail)}
+            aria-describedby={invitedEmail ? 'signup-email-hint' : undefined}
+            className={invitedEmail ? 'bg-muted text-muted-foreground' : undefined}
+            data-testid="signup-email-input"
+          />
+          {invitedEmail && (
+            <p id="signup-email-hint" className="text-xs text-muted-foreground">
+              Your invite was sent to this address, so it can&apos;t be changed here.
+            </p>
+          )}
           {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
         </div>
         <div className="space-y-2">

@@ -323,6 +323,7 @@ export const REPORT_POST = gql`
 export const VOTE = gql`
   mutation addVote($vote: VoteInput!) {
     addVote(vote: $vote) {
+      _id
       postId
       type
     }

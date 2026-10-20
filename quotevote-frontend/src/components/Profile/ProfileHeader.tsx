@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { MessageCircle, Flag, MoreHorizontal, Pencil } from 'lucide-react';
@@ -30,6 +31,7 @@ import {
 import { ProfileBadge, ProfileBadgeContainer } from './ProfileBadge';
 import { ProfileBio } from './ProfileBio';
 import { cn } from '@/lib/utils';
+import { FOCUS_RING_CLASS } from '@/lib/constants/formControls';
 import useGuestGuard from '@/hooks/useGuestGuard';
 import { useProfileBackground } from '@/hooks/useProfileBackground';
 import {
@@ -215,8 +217,9 @@ export function ProfileHeader({ profileUser }: ProfileHeaderProps) {
       {/* Profile info section */}
       <div className="px-5 pb-4 relative z-10">
         {/* Avatar overlapping banner */}
-        <div className="flex items-end justify-between -mt-10 mb-3">
-          <div className="ring-4 ring-card rounded-full">
+        {/* The actions wrap under the avatar on phones too narrow to fit both. */}
+        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-3 -mt-10 mb-3">
+          <div className="ring-4 ring-card rounded-full shrink-0">
             <DisplayAvatar
               avatar={avatar as string | Record<string, unknown> | undefined}
               /* Seed the default avatar with the same value the chat/message
@@ -228,14 +231,13 @@ export function ProfileHeader({ profileUser }: ProfileHeaderProps) {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-14">
+          <div className="ml-auto flex items-center gap-2 sm:pt-14">
             {sameUser ? (
-              <Button
-                variant="outline"
-                onClick={() => router.push('/settings')}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit Profile
+              <Button variant="outline" asChild className={FOCUS_RING_CLASS}>
+                <Link href={`/profile/${username}/edit`} data-testid="edit-profile-button">
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                  Edit Profile
+                </Link>
               </Button>
             ) : (
               <>
@@ -249,8 +251,9 @@ export function ProfileHeader({ profileUser }: ProfileHeaderProps) {
                   size="default"
                   onClick={handleMessageUser}
                 >
-                  <MessageCircle className="mr-2 h-4 w-4" />
-                  Message
+                  <MessageCircle className="h-4 w-4 sm:mr-2" aria-hidden="true" />
+                  {/* Icon-only on phones so Following, Message and More fit next to the avatar. */}
+                  <span className="max-sm:sr-only">Message</span>
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -304,15 +307,23 @@ export function ProfileHeader({ profileUser }: ProfileHeaderProps) {
         {/* Stats row */}
         <div className="flex items-center gap-6">
           <button
+            type="button"
             onClick={() => router.push(`/profile/${username}/followers`)}
-            className="cursor-pointer hover:underline text-sm text-foreground hover:scale-105 transition-transform"
+            className={cn(
+              'min-h-8 cursor-pointer rounded-md text-sm text-foreground hover:underline',
+              FOCUS_RING_CLASS
+            )}
           >
             <span className="font-extrabold text-base">{followersCount}</span>{' '}
             <span className="text-muted-foreground">Followers</span>
           </button>
           <button
+            type="button"
             onClick={() => router.push(`/profile/${username}/following`)}
-            className="cursor-pointer hover:underline text-sm text-foreground hover:scale-105 transition-transform"
+            className={cn(
+              'min-h-8 cursor-pointer rounded-md text-sm text-foreground hover:underline',
+              FOCUS_RING_CLASS
+            )}
           >
             <span className="font-extrabold text-base">{followingCount}</span>{' '}
             <span className="text-muted-foreground">Following</span>

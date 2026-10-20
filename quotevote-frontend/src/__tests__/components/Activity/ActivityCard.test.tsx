@@ -82,22 +82,22 @@ describe('ActivityCard', () => {
     const handleLike = jest.fn()
     render(<ActivityCard {...defaultProps} onLike={handleLike} />)
 
-    const bookmarkButton = screen.getByLabelText(/bookmark/i)
+    const bookmarkButton = screen.getByLabelText('Save post')
     await userEvent.click(bookmarkButton)
 
     expect(handleLike).toHaveBeenCalled()
   })
 
-  it('displays bookmark icon when liked', () => {
+  it('shows the saved state when liked', () => {
     render(<ActivityCard {...defaultProps} liked={true} />)
 
-    expect(screen.getByLabelText(/unbookmark/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Remove saved post')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('displays unbookmark icon when not liked', () => {
+  it('shows the unsaved state when not liked', () => {
     render(<ActivityCard {...defaultProps} liked={false} />)
 
-    expect(screen.getByLabelText(/bookmark/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Save post')).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('displays interaction count', () => {
@@ -144,6 +144,35 @@ describe('ActivityCard', () => {
     expect(screen.getByTestId('activity-content')).toHaveClass('items-start')
     expect(screen.getByTestId('activity-header')).toHaveClass('flex-col')
     expect(screen.getByTestId('activity-header')).toHaveClass('sm:flex-row')
+  })
+  describe('keyboard and targets (#536)', () => {
+    it('opens the post with Enter or Space on the card', async () => {
+      const user = userEvent.setup()
+      const onCardClick = jest.fn()
+      render(<ActivityCard {...defaultProps} activityType="COMMENTED" onCardClick={onCardClick} />)
+      const card = screen.getByRole('article', { name: 'commented: Test Post' })
+      card.focus()
+      await user.keyboard('{Enter}')
+      await user.keyboard(' ')
+      expect(onCardClick).toHaveBeenCalledTimes(2)
+    })
+
+    it('leaves Enter on the Save button to the button', async () => {
+      const user = userEvent.setup()
+      const onCardClick = jest.fn()
+      const onLike = jest.fn()
+      render(<ActivityCard {...defaultProps} onCardClick={onCardClick} onLike={onLike} />)
+      screen.getByRole('button', { name: 'Save post' }).focus()
+      await user.keyboard('{Enter}')
+      expect(onLike).toHaveBeenCalledTimes(1)
+      expect(onCardClick).not.toHaveBeenCalled()
+    })
+
+    it('gives Save a 32px target and the avatar a name', () => {
+      render(<ActivityCard {...defaultProps} />)
+      expect(screen.getByRole('button', { name: 'Save post' })).toHaveClass('size-8')
+      expect(screen.getByRole('button', { name: "testuser's profile" })).toBeInTheDocument()
+    })
   })
 })
 

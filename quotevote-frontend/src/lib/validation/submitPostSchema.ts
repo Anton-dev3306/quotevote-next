@@ -18,7 +18,7 @@ export const submitPostSchema = z.object({
     .refine(
       (value) => !containsUrl(value),
       {
-        message: 'Links are not allowed in the post body. Use the Citation URL field instead.',
+        message: 'Links are not allowed in the post body. Use the Citation link field instead.',
       }
     ),
   citationUrl: z

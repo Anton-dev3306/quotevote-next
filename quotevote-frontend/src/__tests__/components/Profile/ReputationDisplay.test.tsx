@@ -92,6 +92,9 @@ describe('ReputationDisplay', () => {
       fireEvent.click(refreshButton);
       
       expect(onRefresh).toHaveBeenCalledTimes(1);
+      // #536: called with no arguments, so the click event never reaches a refetch.
+      expect(onRefresh).toHaveBeenCalledWith();
+      expect(refreshButton).toHaveAccessibleName('Refresh reputation');
     });
 
     it('shows loading state on refresh button when loading', () => {

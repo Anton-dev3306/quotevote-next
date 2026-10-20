@@ -18,10 +18,13 @@ import {
 } from '@/graphql/queries'
 import { useAppStore } from '@/store'
 import useGuestGuard from '@/hooks/useGuestGuard'
+import { announceBookmarkChange } from '@/lib/utils/bookmarkFeedback'
 import { useRouter } from 'next/navigation'
 import { toAppPostUrl } from '@/lib/utils/sanitizeUrl'
 import { isPostedActivityType } from '@/lib/constants/postCardTheme'
 import { cn } from '@/lib/utils'
+import { AlertCircle, Inbox, Loader2, RotateCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { PaginatedActivityListProps, ActivityEntity } from '@/types/activity'
 
 function LoadActivityCard({
@@ -85,9 +88,15 @@ function LoadActivityCard({
   const handleLike = async () => {
     if (!ensureAuth() || !currentUser?._id) return
 
-    await updatePostBookmark({
-      variables: { postId, userId: currentUser._id },
-    })
+    // GraphQL errors are already shown by the global Apollo error link.
+    try {
+      await updatePostBookmark({
+        variables: { postId, userId: currentUser._id },
+      })
+    } catch {
+      return
+    }
+    announceBookmarkChange(Boolean(isLiked))
 
     await createPostMessageRoom({
       variables: { postId },
@@ -137,6 +146,8 @@ function LoadActivityCard({
     <div
       className={cn(
         'mb-2 w-full max-w-full overflow-x-hidden box-border',
+        // The keyboard focus outline sits here: this wrapper's overflow would clip one on the card.
+        'has-[>[role=article]:focus-visible]:outline-3 has-[>[role=article]:focus-visible]:outline-offset-2 has-[>[role=article]:focus-visible]:outline-[#52b274]',
         !isPosted && 'rounded-lg shadow-lg border'
       )}
       style={{ borderRadius: 7 }}
@@ -181,6 +192,7 @@ export function PaginatedActivityList({
   onPageChange,
   onPageSizeChange,
   onRefresh,
+  onClearFilters,
   className,
   contentClassName,
   paginationClassName,
@@ -258,49 +270,73 @@ export function PaginatedActivityList({
 
   // Render empty state
   const renderEmpty = () => (
-    <div className="text-center p-8">
-      <div className="text-6xl mb-4">📊</div>
-      <h3 className="text-lg font-semibold text-muted-foreground mb-2">
-        No activities found
+    <div
+      role="status"
+      data-testid="activity-empty"
+      className="flex flex-col items-center gap-2 rounded-lg border border-border/60 bg-card px-6 py-10 text-center"
+    >
+      <Inbox className="size-8 text-foreground/50" aria-hidden="true" />
+      <h3 className="text-base font-semibold">
+        {searchKey || onClearFilters ? 'Nothing matches' : 'No activity yet'}
       </h3>
-      <p className="text-sm text-muted-foreground">
+      <p className="max-w-sm text-sm text-foreground/75">
         {searchKey
-          ? `No activities match your search for "${searchKey}"`
-          : 'No activities available at the moment'}
+          ? `No activity matches "${searchKey}".`
+          : onClearFilters
+            ? 'Nothing of this kind yet. Try another filter.'
+            : 'Posts, votes, comments and quotes will show up here.'}
       </p>
+      {onClearFilters && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onClearFilters()}
+          className="mt-2 focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+        >
+          Show all activity
+        </Button>
+      )}
     </div>
   )
 
   // Render error state
   const renderError = (
-    error: Error | { message?: string },
+    _error: Error | { message?: string },
     onRetry?: () => void
   ) => (
-    <div className="text-center p-8">
-      <div className="text-6xl mb-4">⚠️</div>
-      <h3 className="text-lg font-semibold text-destructive mb-2">
-        Something went wrong
-      </h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        {error.message || 'An error occurred while loading activities'}
-      </p>
+    <div
+      role="alert"
+      data-testid="activity-error"
+      className="flex flex-col items-center gap-2 rounded-lg border border-border/60 bg-card px-6 py-10 text-center"
+    >
+      <AlertCircle className="size-8 text-destructive" aria-hidden="true" />
+      <h3 className="text-base font-semibold">Activity couldn&apos;t load</h3>
+      <p className="max-w-sm text-sm text-foreground/75">Check your connection and try again.</p>
       {onRetry && (
-        <button
+        <Button
           type="button"
-          onClick={onRetry}
-          className="px-4 py-2 bg-[var(--color-primary)] text-white rounded hover:bg-[var(--color-primary)]/90"
+          variant="outline"
+          // Call with no arguments: passing the click event would reach refetch as variables.
+          onClick={() => onRetry()}
+          className="mt-2 focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
         >
-          Try Again
-        </button>
+          <RotateCw className="size-4" aria-hidden="true" />
+          Try again
+        </Button>
       )}
     </div>
   )
 
   // Render loading state
   const renderLoading = () => (
-    <div className="text-center p-8">
-      <div className="text-4xl mb-4">⏳</div>
-      <p className="text-sm text-muted-foreground">Loading activities...</p>
+    <div
+      role="status"
+      aria-busy="true"
+      data-testid="activity-loading"
+      className="flex items-center justify-center gap-2 p-8 text-sm text-foreground/75"
+    >
+      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+      Loading activity…
     </div>
   )
 

@@ -614,10 +614,45 @@ export const GET_CHAT_ROOMS = gql`
       lastActivity
       unreadMessages
       postDetails {
+        _id
         title
         text
         url
       }
+    }
+  }
+`
+
+/**
+ * Message text and authors for each room, used by the Messages search (#531).
+ * Fetched only while the user is searching, not with the polled room list.
+ */
+export const GET_CHAT_ROOM_SEARCH_DATA = gql`
+  query getChatRoomSearchData {
+    messageRooms {
+      _id
+      messages {
+        _id
+        text
+        userId
+        user {
+          _id
+          username
+          name
+        }
+      }
+    }
+  }
+`
+
+/**
+ * The tag (group) of a discussion's post, shown on its Messages card (#531)
+ */
+export const GET_POST_GROUP_ID = gql`
+  query getPostGroupId($postId: String!) {
+    post(postId: $postId) {
+      _id
+      groupId
     }
   }
 `
@@ -826,6 +861,7 @@ export const GET_NOTIFICATIONS = gql`
       post {
         _id
         url
+        deleted
       }
     }
   }
