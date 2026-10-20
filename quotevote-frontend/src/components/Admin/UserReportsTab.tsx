@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import moment from 'moment'
+import { parseApiDate } from '@/lib/utils/apiDate'
 import { AlertCircle, Loader2, Flag, ShieldOff, Search, User } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -277,7 +278,7 @@ export default function UserReportsTab() {
                             <StatusBadge status={report.status} />
                           </td>
                           <td className="px-5 py-3.5 text-sm text-muted-foreground">
-                            {moment(report.createdAt).format('MMM DD, YYYY')}
+                            {moment(parseApiDate(report.createdAt)).format('MMM DD, YYYY')}
                           </td>
                         </tr>
                       )
@@ -307,7 +308,7 @@ export default function UserReportsTab() {
                         <SeverityBadge severity={report.severity} />
                         <StatusBadge status={report.status} />
                         <span className="text-xs text-muted-foreground ml-auto">
-                          {moment(report.createdAt).format('MMM DD, YYYY')}
+                          {moment(parseApiDate(report.createdAt)).format('MMM DD, YYYY')}
                         </span>
                       </div>
                     </div>

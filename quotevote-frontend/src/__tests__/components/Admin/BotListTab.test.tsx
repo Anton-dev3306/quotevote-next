@@ -114,6 +114,25 @@ describe('BotListTab', () => {
     })
   })
 
+  it('shows the last report date when the API sends it as milliseconds in a string', async () => {
+    const msMock = {
+      ...botReportsMock,
+      result: {
+        data: {
+          getBotReportedUsers: [
+            { ...botReportsMock.result.data.getBotReportedUsers[0], lastBotReportDate: '1769947200000' },
+          ],
+        },
+      },
+    }
+    render(<BotListTab />, { mocks: [msMock] })
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Feb 1, 2026').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText(/Invalid date/)).not.toBeInTheDocument()
+  })
+
   it('shows sort selector', async () => {
     render(<BotListTab />, { mocks: [botReportsMock] })
 

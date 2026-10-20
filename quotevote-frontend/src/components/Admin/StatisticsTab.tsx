@@ -2,6 +2,7 @@
 
 import { useQuery } from '@apollo/client/react'
 import moment from 'moment'
+import { parseApiDate } from '@/lib/utils/apiDate'
 import { Users, Clock, XCircle, BarChart3, TrendingUp } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -63,7 +64,7 @@ export default function StatisticsTab({ inviteData }: StatisticsTabProps) {
   const monthly: Record<string, number> = {}
   inviteData.forEach(({ joined }) => {
     if (!joined) return
-    const key = moment(joined).format('YYYY-MM')
+    const key = moment(parseApiDate(joined)).format('YYYY-MM')
     monthly[key] = (monthly[key] || 0) + 1
   })
   const sortedMonths = Object.keys(monthly).sort().slice(-12)
