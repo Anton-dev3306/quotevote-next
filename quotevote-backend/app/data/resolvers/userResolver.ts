@@ -39,6 +39,37 @@ type UserReportResult = {
   updatedAt: string;
 };
 
+const BOT_REPORTED_USERS_DEFAULT_LIMIT = 100;
+const BOT_REPORTED_USERS_MAX_LIMIT = 500;
+// Same fields legacy's getBotReportedUsers selected, plus contributorBadge
+// because the admin bot list asks for it.
+const BOT_REPORTED_USER_SELECT = {
+  id: true,
+  username: true,
+  name: true,
+  email: true,
+  botReports: true,
+  accountStatus: true,
+  lastBotReportDate: true,
+  joined: true,
+  avatar: true,
+  contributorBadge: true,
+} as const satisfies Prisma.UserSelect;
+
+const BOT_REPORT_ORDER: Record<
+  'botReports' | 'lastReportDate',
+  Prisma.UserOrderByWithRelationInput[]
+> = {
+  botReports: [{ botReports: 'desc' }, { lastBotReportDate: 'desc' }],
+  lastReportDate: [{ lastBotReportDate: 'desc' }, { botReports: 'desc' }],
+};
+
+type BotReportSortBy = keyof typeof BOT_REPORT_ORDER;
+
+function isBotReportSortBy(value: string): value is BotReportSortBy {
+  return Object.prototype.hasOwnProperty.call(BOT_REPORT_ORDER, value);
+}
+
 type UpdateUserInput = {
   _id: string;
   name?: string | null;
@@ -162,6 +193,45 @@ export const userResolver = {
           updatedAt: toIsoDateString(report.updatedAt ?? createdAt),
         };
       });
+    },
+    getBotReportedUsers: async (
+      _parent: unknown,
+      args: { sortBy?: string | null; limit?: number | null },
+      context: GraphQLContext
+    ): Promise<Common.User[]> => {
+      if (!context.user?._id) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+      if (context.user.admin !== true) {
+        throw new GraphQLError('Admin access required', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+
+      const sortBy = args.sortBy ?? 'botReports';
+      if (!isBotReportSortBy(sortBy)) {
+        throw new GraphQLError('Invalid sortBy', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      const limit = args.limit ?? BOT_REPORTED_USERS_DEFAULT_LIMIT;
+      if (!Number.isInteger(limit) || limit < 1) {
+        throw new GraphQLError('limit must be a positive integer', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      const users = await context.prisma.user.findMany({
+        where: { botReports: { gt: 0 } },
+        orderBy: BOT_REPORT_ORDER[sortBy],
+        take: Math.min(limit, BOT_REPORTED_USERS_MAX_LIMIT),
+        select: BOT_REPORTED_USER_SELECT,
+      });
+
+      return users.map((u) => toPublicUser(u as PrismaUserRecord));
     },
   },
 
