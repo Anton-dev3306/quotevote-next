@@ -9,6 +9,7 @@ import PostUnavailable from '@/components/Post/PostUnavailable'
 import PostActionList from '@/components/PostActions/PostActionList'
 import PostChatSend from '@/components/PostChat/PostChatSend'
 import MobileDiscussionSplit from '@/components/Post/MobileDiscussionSplit'
+import DiscussionSplitPane from '@/components/Post/DiscussionSplitPane'
 import { useHasMounted, useIsMobile, useIsLandscapeMobile } from '@/hooks/useMediaQuery'
 import { GET_POST, GET_ROOM_MESSAGES } from '@/graphql/queries'
 import { toAppPostUrl } from '@/lib/utils/sanitizeUrl'
@@ -184,16 +185,12 @@ function PostLayout({ postId }: { postId: string }) {
     )
   }
 
+  // Desktop, tablet and landscape phones: side by side with a draggable divider (#516).
   const containerHeight = isLandscape ? 'h-[calc(100vh-80px)]' : 'h-[85vh]'
   return (
-    <div className={`flex ${containerHeight} overflow-hidden`}>
-      <div data-post-detail-pane="content" className="flex-1 overflow-y-auto border-r border-border">
-        {quotePane}
-      </div>
-      <div data-post-detail-pane="discussion" className="w-[50%] flex flex-col overflow-hidden">
-        {discussion}
-      </div>
-    </div>
+    <DiscussionSplitPane className={containerHeight} contentPane={quotePane}>
+      {discussion}
+    </DiscussionSplitPane>
   )
 }
 

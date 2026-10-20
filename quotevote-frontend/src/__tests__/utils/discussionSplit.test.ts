@@ -1,4 +1,7 @@
 import {
+  clampContentRatio,
+  getContentRatioBounds,
+  loadPersistedContentRatio,
   clampQuoteRatio,
   getActionTextRange,
   loadPersistedQuoteRatio,
@@ -233,6 +236,33 @@ describe("discussionSplit utils", () => {
 
       expect(scrollTo).not.toHaveBeenCalled();
       container.remove();
+    });
+  });
+
+  describe("side-by-side bounds (#516)", () => {
+    it("keeps each pane at least 320px", () => {
+      const { min, max } = getContentRatioBounds(1000);
+      expect(min).toBeCloseTo(0.32);
+      expect(max).toBeCloseTo(0.68);
+    });
+
+    it("locks to half and half when the container can't fit two 320px panes", () => {
+      expect(getContentRatioBounds(600)).toEqual({ min: 0.5, max: 0.5 });
+      expect(getContentRatioBounds(0)).toEqual({ min: 0.5, max: 0.5 });
+    });
+
+    it("clamps into the bounds and falls back to half for NaN", () => {
+      const bounds = getContentRatioBounds(1000);
+      expect(clampContentRatio(0.9, bounds)).toBeCloseTo(0.68);
+      expect(clampContentRatio(0.1, bounds)).toBeCloseTo(0.32);
+      expect(clampContentRatio(Number.NaN, bounds)).toBe(0.5);
+    });
+
+    it("loads a saved size and ignores a broken one", () => {
+      (window.localStorage.getItem as jest.Mock).mockReturnValueOnce("0.6");
+      expect(loadPersistedContentRatio()).toBe(0.6);
+      (window.localStorage.getItem as jest.Mock).mockReturnValueOnce("nope");
+      expect(loadPersistedContentRatio()).toBe(0.5);
     });
   });
 });

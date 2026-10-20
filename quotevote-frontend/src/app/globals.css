@@ -1756,6 +1756,19 @@ body {
   background-color: var(--card) !important;
 }
 
+/* Split view divider (#516): the double stripe already draws the line, so the
+   grip gets the ink border, hard shadow and yellow fill instead. */
+.neo-brutalism [data-testid="discussion-split-divider"] > span:first-child {
+  display: none;
+}
+
+.neo-brutalism [data-testid="discussion-split-divider"] > span:last-child {
+  border: var(--nb-border-width) solid var(--nb-border-color) !important;
+  border-radius: 4px !important;
+  background-color: var(--nb-yellow) !important;
+  box-shadow: var(--nb-shadow-sm) !important;
+}
+
 /* ============================================================ */
 /* POST ACTION CARDS (comments / votes / quotes in discussion)   */
 /* src/components/PostActions/PostActionCard.tsx                 */
