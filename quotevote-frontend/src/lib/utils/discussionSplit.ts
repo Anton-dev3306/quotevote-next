@@ -1,12 +1,15 @@
 import {
+  DEFAULT_CONTENT_RATIO,
   DEFAULT_QUOTE_RATIO,
+  DESKTOP_SPLIT_RATIO_STORAGE_KEY,
+  MIN_SPLIT_PANE_WIDTH_PX,
   MAX_QUOTE_RATIO,
   MIN_QUOTE_RATIO,
   SNAP_QUOTE_RATIOS,
   SNAP_THRESHOLD,
   SPLIT_RATIO_STORAGE_KEY,
 } from "@/types/discussionSplit";
-import type { LinkedPassage, TextRange } from "@/types/discussionSplit";
+import type { LinkedPassage, SplitRatioBounds, TextRange } from "@/types/discussionSplit";
 import type { PostAction } from "@/types/postActions";
 
 export function clampQuoteRatio(ratio: number): number {
@@ -58,6 +61,45 @@ export function persistQuoteRatio(ratio: number): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(SPLIT_RATIO_STORAGE_KEY, String(clampQuoteRatio(ratio)));
+  } catch {
+    // Ignore quota / private-mode failures
+  }
+}
+
+/**
+ * How far the side-by-side divider may move for a container this wide, so each
+ * pane keeps at least MIN_SPLIT_PANE_WIDTH_PX. Too narrow for both: stay at half.
+ */
+export function getContentRatioBounds(containerWidth: number): SplitRatioBounds {
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) {
+    return { min: DEFAULT_CONTENT_RATIO, max: DEFAULT_CONTENT_RATIO };
+  }
+  const min = MIN_SPLIT_PANE_WIDTH_PX / containerWidth;
+  if (min >= 0.5) return { min: 0.5, max: 0.5 };
+  return { min, max: 1 - min };
+}
+
+export function clampContentRatio(ratio: number, bounds: SplitRatioBounds): number {
+  if (Number.isNaN(ratio)) return Math.min(bounds.max, Math.max(bounds.min, DEFAULT_CONTENT_RATIO));
+  return Math.min(bounds.max, Math.max(bounds.min, ratio));
+}
+
+export function loadPersistedContentRatio(): number {
+  if (typeof window === "undefined") return DEFAULT_CONTENT_RATIO;
+  try {
+    const raw = window.localStorage.getItem(DESKTOP_SPLIT_RATIO_STORAGE_KEY);
+    if (raw == null) return DEFAULT_CONTENT_RATIO;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) && parsed > 0 && parsed < 1 ? parsed : DEFAULT_CONTENT_RATIO;
+  } catch {
+    return DEFAULT_CONTENT_RATIO;
+  }
+}
+
+export function persistContentRatio(ratio: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DESKTOP_SPLIT_RATIO_STORAGE_KEY, String(ratio));
   } catch {
     // Ignore quota / private-mode failures
   }

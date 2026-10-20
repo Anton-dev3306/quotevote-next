@@ -4,27 +4,35 @@
 > We moved our authentication system to TypeScript. This guide explains what changed and how to use the new API.
 
 ## 🚀 What's New
-*   **Better Security**: We now use strict types and two tokens (Access + Refresh) to keep users safe.
-*   **Standard Errors**: Errors now look the same everywhere, making them easier to handle.
+
+- **Better Security**: We now use strict types and two tokens (Access + Refresh) to keep users safe.
+- **Standard Errors**: Errors now look the same everywhere, making them easier to handle.
 
 ## ⚠️ Important Changes
 
 ### 1. New Login Response
+
 When you log in, you now get two tokens (`accessToken`, `refreshToken`) and your user details.
-*   **accessToken**: Use this for API requests. Expires quickly (15 mins).
-*   **refreshToken**: Use this to get a new accessToken when the old one expires. Expires in 7 days.
+
+- **accessToken**: Use this for API requests. Expires quickly (15 mins).
+- **refreshToken**: Use this to get a new accessToken when the old one expires. Expires in 7 days.
 
 ### 2. Update Your Secrets
+
 We renamed the secret key in the `.env` file.
-*   **Old Name**: `SECRET`
-*   **New Name**: `JWT_SECRET`
-    > [!TIP]
-    > Make sure to update your `.env` file!
+
+- **Old Name**: `SECRET`
+- **New Name**: `JWT_SECRET`
+  > [!TIP]
+  > Make sure to update your `.env` file!
 
 ## 📚 API Guide
 
 ### 1. Register (Create Account)
+
 **`POST /auth/register`**
+
+Requires `acceptedTermsVersion` matching the server's current Terms version (see [terms-acceptance.md](./terms-acceptance.md)). Guest registration (`POST /auth/guest`) has been removed.
 
 ```bash
 curl -X POST http://localhost:4000/auth/register \
@@ -33,11 +41,13 @@ curl -X POST http://localhost:4000/auth/register \
     "name": "John Doe",
     "username": "johndoe",
     "email": "john@example.com",
-    "password": "securepassword123"
+    "password": "securepassword123",
+    "acceptedTermsVersion": "2026-10-15"
   }'
 ```
 
 **Response:**
+
 ```json
 {
   "message": "User registered successfully",
@@ -50,6 +60,7 @@ curl -X POST http://localhost:4000/auth/register \
 ```
 
 ### 2. Login
+
 **`POST /auth/login`**
 
 ```bash
@@ -62,6 +73,7 @@ curl -X POST http://localhost:4000/auth/login \
 ```
 
 **Response:**
+
 ```json
 {
   "accessToken": "eyJhbGciOi...",
@@ -78,6 +90,7 @@ curl -X POST http://localhost:4000/auth/login \
 ```
 
 ### 3. Refresh Token (Get New Access Token)
+
 **`POST /auth/refresh`**
 
 ```bash
@@ -89,6 +102,7 @@ curl -X POST http://localhost:4000/auth/refresh \
 ```
 
 **Response:**
+
 ```json
 {
   "accessToken": "eyJhbGciOi... (new)",
@@ -97,6 +111,7 @@ curl -X POST http://localhost:4000/auth/refresh \
 ```
 
 ### 4. Authenticated Request Example
+
 Use the `accessToken` to check the API status.
 
 **`POST /graphql`**
@@ -111,19 +126,20 @@ curl -X POST http://localhost:4000/graphql \
 ```
 
 **Response:**
+
 ```json
 {
-    "data": {
-        "status": "Active",
-        "hello": "Hello from TypeScript Backend! 🚀"
-    }
+  "data": {
+    "status": "Active",
+    "hello": "Hello from TypeScript Backend! 🚀"
+  }
 }
 ```
 
 ## 🛠️ Quick Tips for Frontend
 
 1.  **Save Tokens**:
-    *   Save `accessToken` in memory (variable).
-    *   Save `refreshToken` in a secure cookie or storage.
+    - Save `accessToken` in memory (variable).
+    - Save `refreshToken` in a secure cookie or storage.
 2.  **Use Tokens**: Add `Authorization: Bearer <accessToken>` to your headers when making requests.
 3.  **Handle Expiry**: If you get a `401 Unauthorized` error, use the `/auth/refresh` endpoint to get a new token and try again.

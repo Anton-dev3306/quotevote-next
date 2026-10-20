@@ -36,7 +36,9 @@ import { cn } from "@/lib/utils";
 import { PROFILE_BIO_HTML_PATTERN, PROFILE_BIO_MAX_LENGTH } from "@/lib/constants/profile";
 import {
   FOCUS_RING_CLASS,
+  FORM_ERROR_TEXT_CLASS,
   FORM_FIELD_CLASS,
+  FORM_LABEL_CLASS,
   PRIMARY_ACTION_CLASS,
 } from "@/lib/constants/formControls";
 import type { ProfileBackgroundPattern } from "@/types/profile";
@@ -137,7 +139,9 @@ export default function EditProfilePageClient({
     resolver: zodResolver(schema),
     defaultValues: { name, username, bio: savedBio },
     values: { name, username, bio: savedBio },
-    resetOptions: { keepDirtyValues: true },
+    // Saved values can arrive after the user has typed and pressed Save; keep both
+    // their edits and any validation errors when they do.
+    resetOptions: { keepDirtyValues: true, keepErrors: true },
   });
 
   const isDirty = form.formState.isDirty || bannerDirty;
@@ -250,7 +254,7 @@ export default function EditProfilePageClient({
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Display name</FormLabel>
+                    <FormLabel className={FORM_LABEL_CLASS}>Display name</FormLabel>
                     <FormControl>
                       <Input
                         autoComplete="name"
@@ -260,7 +264,7 @@ export default function EditProfilePageClient({
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className={FORM_ERROR_TEXT_CLASS} />
                   </FormItem>
                 )}
               />
@@ -270,7 +274,7 @@ export default function EditProfilePageClient({
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel className={FORM_LABEL_CLASS}>Username</FormLabel>
                     <FormControl>
                       <Input
                         autoComplete="username"
@@ -285,7 +289,7 @@ export default function EditProfilePageClient({
                     <FormDescription className="text-foreground/75">
                       Your profile address: /profile/{field.value || "username"}
                     </FormDescription>
-                    <FormMessage />
+                    <FormMessage className={FORM_ERROR_TEXT_CLASS} />
                   </FormItem>
                 )}
               />
@@ -296,7 +300,7 @@ export default function EditProfilePageClient({
                   name="bio"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>About</FormLabel>
+                      <FormLabel className={FORM_LABEL_CLASS}>About</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="A short, plain-text introduction"
@@ -309,7 +313,7 @@ export default function EditProfilePageClient({
                       <FormDescription className="text-foreground/75 tabular-nums">
                         {field.value?.length ?? 0}/{PROFILE_BIO_MAX_LENGTH} characters
                       </FormDescription>
-                      <FormMessage />
+                      <FormMessage className={FORM_ERROR_TEXT_CLASS} />
                     </FormItem>
                   )}
                 />

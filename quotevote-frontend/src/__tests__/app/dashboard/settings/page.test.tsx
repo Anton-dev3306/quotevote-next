@@ -164,6 +164,40 @@ describe('Settings Page (#536: account and app preferences only)', () => {
     expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true')
   })
 
+  it('keeps Change password under Account (#595 review)', () => {
+    render(<SettingsPageClient />, { mocks: [getUserMock] })
+    const account = screen.getByRole('region', { name: 'Account' })
+    expect(account).toContainElement(screen.getByRole('button', { name: 'Change password' }))
+  })
+
+  it('changes the password on its own, without submitting the Settings form', async () => {
+    const passwordMock = {
+      request: {
+        query: UPDATE_USER,
+        variables: { user: { _id: 'user-1', password: 'brand-new-pass' } },
+      },
+      result: { data: { updateUser: saveEmailMock.result.data.updateUser } },
+    }
+    render(<SettingsPageClient />, { mocks: [getUserMock, passwordMock] })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'brand-new-pass' },
+    })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'brand-new-pass' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    // Only the password mock exists, so a Settings save here would have failed the mutation;
+    // the unsaved email edit is still pending.
+    expect(screen.getByLabelText('Email')).toHaveValue('new@example.com')
+    expect(useAppStore.getState().user.data?.email).toBe('test@example.com')
+  })
+
   it('saves only the account fields', async () => {
     render(<SettingsPageClient />, { mocks: [getUserMock, saveEmailMock, getUserMock] })
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } })

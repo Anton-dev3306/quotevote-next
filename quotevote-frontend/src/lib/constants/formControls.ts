@@ -21,3 +21,13 @@ export const PRIMARY_ACTION_CLASS = "bg-[#2f7a4c] text-white hover:bg-[#276640]"
  */
 export const SWITCH_CLASS =
   "data-[state=unchecked]:bg-[#8a8a93] data-[state=checked]:bg-[#2f7a4c] dark:data-[state=unchecked]:bg-[#6e7681] dark:data-[state=checked]:bg-[#2f7a4c]";
+
+/**
+ * Error text for these forms. The theme's destructive red (#f55145) is about
+ * 3.4:1 on white; these reds are 5.6:1 (light) and 6.2:1 (dark).
+ */
+export const FORM_ERROR_TEXT_CLASS = "text-[#c62828] dark:text-[#ff6b6b]";
+
+/** A field label turns red with its error; same readable reds as the message. */
+export const FORM_LABEL_CLASS =
+  "data-[error=true]:text-[#c62828] dark:data-[error=true]:text-[#ff6b6b]";

@@ -524,7 +524,8 @@ export default function Post({
         role="toolbar"
         aria-label="Post actions"
       >
-        <div className="flex items-center gap-1.5 flex-nowrap [scrollbar-width:none] overflow-x-auto [&::-webkit-scrollbar]:hidden">
+        {/* Wraps instead of scrolling with a hidden scrollbar, so More options is never cut off in a narrow post pane (#516). */}
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
           <RejectButton
             selected={hasRejected}
             count={rejectCount}

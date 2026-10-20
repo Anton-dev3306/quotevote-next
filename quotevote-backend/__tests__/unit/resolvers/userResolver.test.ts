@@ -1,8 +1,15 @@
 import { GraphQLError } from 'graphql';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { userResolver } from '~/data/resolvers/userResolver';
 import type { GraphQLContext } from '~/types/graphql';
 import { PUBLIC_USER_SELECT } from '~/data/utils/userPrismaMapper';
+
+jest.mock('bcryptjs', () => ({
+  genSalt: jest.fn().mockResolvedValue('salt'),
+  hash: jest.fn().mockResolvedValue('hashed-password'),
+}));
+
 const actorId = '507f1f77bcf86cd799439011';
 const otherId = '507f1f77bcf86cd799439012';
 
@@ -210,6 +217,52 @@ describe('userResolver', () => {
       await expect(
         userResolver.Mutation.updateUser(null, { user: { _id: actorId, bio: 'Test' } }, ctx)
       ).rejects.toThrow(/User not found/);
+    });
+
+    it('hashes password changes for completed accounts', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: actorId,
+        password: 'already-set',
+        status: null,
+      });
+      (ctx.prisma.user.update as jest.Mock).mockResolvedValue({
+        id: actorId,
+        username: 'alice',
+      });
+
+      await userResolver.Mutation.updateUser(
+        null,
+        { user: { _id: actorId, password: 'NewPassword1' } },
+        ctx
+      );
+
+      expect(bcrypt.genSalt).toHaveBeenCalledWith(10);
+      expect(bcrypt.hash).toHaveBeenCalledWith('NewPassword1', 'salt');
+      expect(ctx.prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: actorId },
+          data: { password: 'hashed-password' },
+        })
+      );
+    });
+
+    it('rejects unfinished invite accounts from updateUser', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: actorId,
+        password: null,
+        status: 4,
+      });
+
+      await expect(
+        userResolver.Mutation.updateUser(
+          null,
+          { user: { _id: actorId, password: 'NewPassword1' } },
+          ctx
+        )
+      ).rejects.toThrow(/complete signup via completeSignup/);
+      expect(ctx.prisma.user.update).not.toHaveBeenCalled();
     });
   });
 
@@ -621,4 +674,106 @@ describe('userResolver', () => {
       expect(report.updatedAt).toBe(created.toISOString());
     });
   });
-});
+    describe('Query.getBotReportedUsers', () => {
+    const joined = new Date('2025-01-01T00:00:00.000Z');
+    const lastReport = new Date('2026-02-01T00:00:00.000Z');
+
+        it.each([
+      { label: 'a signed-out caller', user: null, code: 'UNAUTHENTICATED' },
+      { label: 'a non-admin member', user: { _id: actorId, admin: false }, code: 'FORBIDDEN' },
+    ])('rejects $label and never queries users', async ({ user, code }) => {
+      const ctx = { ...mockContext(), user } as GraphQLContext;
+
+      await expect(userResolver.Query.getBotReportedUsers(null, {}, ctx)).rejects.toMatchObject({
+        extensions: { code },
+      });
+      expect(ctx.prisma.user.findMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown sortBy', async () => {
+      const ctx = mockContext({ admin: true });
+
+      await expect(
+        userResolver.Query.getBotReportedUsers(null, { sortBy: 'joined' }, ctx)
+      ).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
+      expect(ctx.prisma.user.findMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-positive limit', async () => {
+      const ctx = mockContext({ admin: true });
+
+      await expect(
+        userResolver.Query.getBotReportedUsers(null, { limit: 0 }, ctx)
+      ).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
+      expect(ctx.prisma.user.findMany).not.toHaveBeenCalled();
+    });
+
+    it('defaults to botReports ordering, limit 100, and users with reports only', async () => {
+      const ctx = mockContext({ admin: true });
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+
+      await userResolver.Query.getBotReportedUsers(null, {}, ctx);
+
+      expect(ctx.prisma.user.findMany).toHaveBeenCalledWith({
+        where: { botReports: { gt: 0 } },
+        orderBy: [{ botReports: 'desc' }, { lastBotReportDate: 'desc' }],
+        take: 100,
+        select: expect.objectContaining({ email: true, botReports: true, joined: true }),
+      });
+    });
+
+    it('orders by last report date first for sortBy lastReportDate', async () => {
+      const ctx = mockContext({ admin: true });
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+
+      await userResolver.Query.getBotReportedUsers(null, { sortBy: 'lastReportDate' }, ctx);
+
+      expect(ctx.prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ lastBotReportDate: 'desc' }, { botReports: 'desc' }],
+        })
+      );
+    });
+
+    it('caps limit at 500', async () => {
+      const ctx = mockContext({ admin: true });
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+
+      await userResolver.Query.getBotReportedUsers(null, { limit: 10000 }, ctx);
+
+      expect(ctx.prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 500 })
+      );
+    });
+
+    it('maps the fields the admin bot list shows', async () => {
+      const ctx = mockContext({ admin: true });
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: otherId,
+          username: 'bot1',
+          name: 'Bot One',
+          email: 'bot1@example.com',
+          botReports: 3,
+          accountStatus: 'active',
+          lastBotReportDate: lastReport,
+          joined,
+          contributorBadge: true,
+        },
+      ]);
+
+      const [user] = await userResolver.Query.getBotReportedUsers(null, {}, ctx);
+
+      expect(user).toMatchObject({
+        _id: otherId,
+        username: 'bot1',
+        email: 'bot1@example.com',
+        botReports: 3,
+        accountStatus: 'active',
+        contributorBadge: true,
+      });
+    });
+  });
+  });
+  
+
