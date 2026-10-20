@@ -1,6 +1,6 @@
 import { graphql } from 'graphql';
 import { schema } from '~/data/schema';
-// Alias ​​+ fragment used intentionally: authorization should not depend on how the query is written
+// Alias + fragment used intentionally: authorization should not depend on how the query is written
 const source = `
   query {
     bots: getBotReportedUsers(sortBy: "botReports", limit: 10) {
