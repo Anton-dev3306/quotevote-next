@@ -1109,7 +1109,7 @@ body {
   box-shadow: var(--nb-shadow-sm) !important;
 }
 
-/* DM & Group pills — rounded-full px-2 py-0.5 with bg-*/10 tint */
+/* DM & Group pills: rounded-full px-2 py-0.5 with a 10% background tint (bg-[colour]/10) */
 .neo-brutalism [class*="rounded-full"][class*="bg-[#52b274]/10"],
 .neo-brutalism [class*="rounded-full"][class*="bg-sky-500/10"] {
   background-color: var(--nb-yellow) !important;
