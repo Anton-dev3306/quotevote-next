@@ -203,3 +203,50 @@ export interface PresenceIconProps {
   status: PresenceStatus;
   className?: string;
 }
+
+/**
+ * The tag (group) a discussion's post belongs to, shown on its card as #title (#531)
+ */
+export interface ConversationTag {
+  groupId: string;
+  title: string;
+}
+
+/** Someone taking part in a conversation, used to match `@user` searches */
+export interface ConversationPerson {
+  username?: string | null;
+  name?: string | null;
+}
+
+/**
+ * What a conversation can be found by in the Messages search (#531): its
+ * title and post, the text of its messages, the people in it and its tag.
+ */
+export interface ConversationSearchContext {
+  messages: string[];
+  people: ConversationPerson[];
+  tag?: ConversationTag | null;
+}
+
+/** Message text and authors per room, fetched only while searching */
+export interface ChatRoomSearchMessage {
+  _id: string;
+  text?: string | null;
+  userId?: string | null;
+  user?: { _id: string; username?: string | null; name?: string | null } | null;
+}
+
+export interface GetChatRoomSearchData {
+  messageRooms: Array<{ _id: string; messages?: ChatRoomSearchMessage[] | null } | null> | null;
+}
+
+export interface ChatSearchInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  ariaLabel?: string;
+}
+
+export interface AddBuddyPanelProps {
+  onBack: () => void;
+}

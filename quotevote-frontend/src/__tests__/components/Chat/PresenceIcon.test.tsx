@@ -27,28 +27,28 @@ describe('PresenceIcon', () => {
     expect(icon.className).toContain('bg-[#52b274]')
   })
 
-  it('applies amber (yellow) class for "away" status', () => {
+  it('applies a distinct yellow class for "away" status (#531)', () => {
     const { container } = render(<PresenceIcon status="away" />)
     const icon = getIcon(container)
-    expect(icon.className).toContain('bg-amber-400')
+    expect(icon.className).toContain('bg-[#facc15]')
   })
 
   it('applies red class for "dnd" status', () => {
     const { container } = render(<PresenceIcon status="dnd" />)
     const icon = getIcon(container)
-    expect(icon.className).toContain('bg-red-500')
+    expect(icon.className).toContain('bg-[#ef4444]')
   })
 
   it('applies zinc (grey) class for "offline" status', () => {
     const { container } = render(<PresenceIcon status="offline" />)
     const icon = getIcon(container)
-    expect(icon.className).toContain('bg-zinc-500')
+    expect(icon.className).toContain('bg-[#a1a1aa]')
   })
 
   it('applies zinc (grey) class for "invisible" status', () => {
     const { container } = render(<PresenceIcon status="invisible" />)
     const icon = getIcon(container)
-    expect(icon.className).toContain('bg-zinc-500')
+    expect(icon.className).toContain('bg-[#a1a1aa]')
   })
 
   // ── Unknown / edge-case status ──────────────────────────────────────────
@@ -60,7 +60,7 @@ describe('PresenceIcon', () => {
     const icon = getIcon(container)
     // Fallback should still render and use offline class
     expect(icon).toBeInTheDocument()
-    expect(icon.className).toContain('bg-zinc-500')
+    expect(icon.className).toContain('bg-[#a1a1aa]')
   })
 
   // ── className prop ──────────────────────────────────────────────────────

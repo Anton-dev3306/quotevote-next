@@ -406,6 +406,50 @@ describe('BuddyListWithPresence', () => {
     expect(buddyLists.length).toBeGreaterThan(0)
   })
 
+  it('finds a buddy by @username as well as by name (#531)', async () => {
+    const { rerender } = render(<BuddyListWithPresence search="@buddy2" />)
+
+    expect(await screen.findByText('1 buddies')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Away (1)' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /online/i })).not.toBeInTheDocument()
+
+    rerender(<BuddyListWithPresence search="buddy one" />)
+    expect(await screen.findByRole('heading', { name: 'Online (1)' })).toBeInTheDocument()
+  })
+
+  it('says so when no buddy matches the search', async () => {
+    render(<BuddyListWithPresence search="@nobody" />)
+    expect(await screen.findByTestId('buddy-empty-search')).toHaveTextContent('No buddies match “@nobody”.')
+  })
+
+  it('marks the Away section with a distinct yellow (#531)', async () => {
+    render(<BuddyListWithPresence />)
+    const heading = await screen.findByRole('heading', { name: 'Away (1)' })
+    expect(heading.className).toContain('text-[#854d0e]')
+    expect(heading.previousElementSibling?.className).toContain('bg-[#facc15]')
+  })
+
+  it('uses theme colours, so the list is readable in dark mode', async () => {
+    const { container } = render(<BuddyListWithPresence />)
+    await screen.findAllByTestId('buddy-item-list')
+    expect(container.querySelector('.bg-white, .bg-gray-50, .text-gray-500')).toBeNull()
+  })
+
+  it('names the Accept and Decline buttons after the person', async () => {
+    mockUseQuery.mockImplementation((query) => {
+      if (query === GET_BUDDY_LIST) {
+        return { data: { getBuddyList: mockBuddyListEntries }, loading: false, refetch: jest.fn() }
+      }
+      if (query === GET_ROSTER) {
+        return { data: { getRoster: mockPendingRosterEntries }, loading: false, refetch: jest.fn() }
+      }
+      return { data: undefined, loading: false, refetch: jest.fn() }
+    })
+    render(<BuddyListWithPresence />)
+    expect(await screen.findByRole('button', { name: 'Accept Requester User' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Decline Requester User' })).toBeInTheDocument()
+  })
+
   it('handles accept buddy errors gracefully', async () => {
     const setSnackbar = jest.fn()
     mockAcceptBuddy.mockRejectedValueOnce(new Error('Failed to accept'))

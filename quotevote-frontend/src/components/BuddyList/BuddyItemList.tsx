@@ -6,6 +6,7 @@ import { MessageSquare, Users } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { GET_CHAT_ROOM } from '@/graphql/queries';
 import { cn } from '@/lib/utils';
+import { PRESENCE_TEXT_CLASS } from '@/lib/constants/presence';
 import { DisplayAvatar } from '@/components/DisplayAvatar';
 import PresenceIcon from '@/components/Chat/PresenceIcon';
 import StatusMessage from '@/components/Chat/StatusMessage';
@@ -117,7 +118,7 @@ export default function BuddyItemList({ buddyList, className }: BuddyItemListPro
     if (isEmptyList) {
         return (
             <div className={cn('flex flex-col h-full', className)}>
-                <div className="p-8 text-center text-gray-500">
+                <div className="p-8 text-center text-muted-foreground">
                     <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-20" />
                     <h3 className="text-lg font-bold mb-2">No Conversations Yet</h3>
                     <p className="text-sm">
@@ -157,7 +158,7 @@ function BuddyItemRow({ item, onClick }: { item: BuddyItem; onClick: () => void 
 
     return (
         <li
-            className="relative flex items-center gap-3 px-4 py-3 m-1 rounded-xl cursor-pointer hover:bg-gray-50/50 transition-all border border-transparent hover:border-gray-200 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
+            className="relative flex items-center gap-3 px-4 py-3 m-1 rounded-xl cursor-pointer hover:bg-muted transition-colors border border-transparent hover:border-border hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-1"
             role="button"
             tabIndex={0}
             onClick={onClick}
@@ -173,10 +174,10 @@ function BuddyItemRow({ item, onClick }: { item: BuddyItem; onClick: () => void 
                     avatar={rawAvatar as string | Record<string, unknown> | undefined}
                     username={itemText}
                     size={40}
-                    className="border-2 border-white shadow-sm"
+                    className="border-2 border-background shadow-sm"
                 />
                 {item.unreadMessages && item.unreadMessages > 0 ? (
-                    <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center bg-[#52b274] text-white text-[10px] font-bold rounded-full px-1 shadow-sm ring-2 ring-white">
+                    <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center bg-[#2f7a4c] text-white text-[10px] font-bold rounded-full px-1 shadow-sm ring-2 ring-background">
                         {item.unreadMessages > 99 ? '99+' : item.unreadMessages}
                     </span>
                 ) : null}
@@ -195,7 +196,7 @@ function BuddyItemRow({ item, onClick }: { item: BuddyItem; onClick: () => void 
                     <div
                         className={cn(
                             "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold text-white shrink-0",
-                            itemType === 'USER' ? "bg-[#52b274]" : "bg-blue-600" // map theme.palette.success/secondary
+                            itemType === 'USER' ? "bg-[#2f7a4c]" : "bg-blue-700" // map theme.palette.success/secondary
                         )}
                     >
                         {itemType === 'USER' ? (
@@ -208,13 +209,13 @@ function BuddyItemRow({ item, onClick }: { item: BuddyItem; onClick: () => void 
                 </div>
 
                 {/* Secondary Text */}
-                <div className="min-w-0 text-xs text-gray-500 truncate">
+                <div className="min-w-0 text-xs text-muted-foreground truncate">
                     {item.statusMessage ? (
                         <StatusMessage message={item.statusMessage} />
                     ) : item.presence?.status === 'away' ? (
-                        <span className="text-amber-500 italic">Away</span>
+                        <span className={cn('font-medium', PRESENCE_TEXT_CLASS.away)}>Away</span>
                     ) : item.presence?.status === 'dnd' ? (
-                        <span className="text-red-500 italic">Do Not Disturb</span>
+                        <span className={cn('font-medium', PRESENCE_TEXT_CLASS.dnd)}>Do Not Disturb</span>
                     ) : null}
                 </div>
             </div>
