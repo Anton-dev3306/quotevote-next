@@ -10,7 +10,14 @@ import {
   shouldCollapseOpenSplit,
   snapQuoteRatio,
 } from "@/lib/utils/discussionSplit";
-import { DEFAULT_QUOTE_RATIO, DISCUSSION_BAR_HEIGHT_PX } from "@/types/discussionSplit";
+import {
+  DEFAULT_QUOTE_RATIO,
+  DISCUSSION_BAR_HEIGHT_PX,
+  MAX_QUOTE_RATIO,
+  MIN_QUOTE_RATIO,
+  SNAP_QUOTE_RATIOS,
+  SPLIT_KEYBOARD_STEP,
+} from "@/types/discussionSplit";
 import type { MobileDiscussionSplitProps } from "@/types/discussionSplit";
 
 function subscribeSplitRatio(onStoreChange: () => void): () => void {
@@ -109,6 +116,26 @@ export default function MobileDiscussionSplit({
     finishDrag();
   }, [finishDrag]);
 
+  // Keyboard resizing (#516): Up gives the discussion more room, Down gives the
+  // quote more. Home and End go to the largest and smallest snap points.
+  const handleDividerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? SPLIT_KEYBOARD_STEP * 2 : SPLIT_KEYBOARD_STEP;
+    const current = quoteRatioRef.current;
+    let next: number | null = null;
+    if (e.key === "ArrowUp") next = current - step;
+    else if (e.key === "ArrowDown") next = current + step;
+    else if (e.key === "Home") next = Math.min(...SNAP_QUOTE_RATIOS);
+    else if (e.key === "End") next = Math.max(...SNAP_QUOTE_RATIOS);
+    else if (e.key === "Enter") next = DEFAULT_QUOTE_RATIO;
+    if (next === null) return;
+    e.preventDefault();
+    // Keys never collapse the pane; that stays a deliberate drag or the close button.
+    const clamped = Math.min(MAX_QUOTE_RATIO - step / 2, Math.max(MIN_QUOTE_RATIO, next));
+    quoteRatioRef.current = clamped;
+    persistQuoteRatio(clamped);
+    setOverrideRatio(clamped);
+  }, []);
+
   const title = `Discussion · ${discussionCount}`;
   const quotePercent = Math.round(quoteRatio * 100);
   const discussionPercent = 100 - quotePercent;
@@ -145,7 +172,7 @@ export default function MobileDiscussionSplit({
         <div
           data-discussion-header
           data-testid="discussion-resize-handle"
-          className="flex shrink-0 cursor-row-resize touch-none select-none flex-col bg-card border-b border-border/60"
+          className="flex shrink-0 cursor-row-resize touch-none select-none flex-col bg-card border-b border-border/60 has-[[role=separator]:focus-visible]:ring-2 has-[[role=separator]:focus-visible]:ring-inset has-[[role=separator]:focus-visible]:ring-[#52b274]"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -157,22 +184,30 @@ export default function MobileDiscussionSplit({
             aria-valuemin={20}
             aria-valuemax={80}
             aria-valuenow={quotePercent}
+            aria-valuetext={`Quote ${quotePercent}%, discussion ${discussionPercent}%`}
             aria-label="Resize quote and discussion panes"
+            tabIndex={0}
+            onKeyDown={handleDividerKeyDown}
             data-testid="discussion-divider"
-            className="flex flex-col items-center"
+            className="flex flex-col items-center pt-1.5 pb-0.5 focus-visible:outline-none"
           >
-            <div className="mt-1 w-10 h-1 rounded-full bg-muted-foreground/30 [.neo-brutalism_&]:mt-0" />
+            {/* A clearer grip: wider, darker and with two lines, so it reads as draggable. */}
+            <div className="flex w-12 flex-col gap-[3px] [.neo-brutalism_&]:mt-0">
+              <div className="h-[3px] rounded-full bg-foreground/40" />
+              <div className="h-[3px] rounded-full bg-foreground/40" />
+            </div>
           </div>
           <div className="flex items-center gap-2 px-4 pb-2">
             <span className="text-sm font-semibold text-foreground">{title}</span>
             <button
               type="button"
-              className="ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60"
+              className="ml-auto inline-flex size-8 cursor-pointer items-center justify-center rounded-full text-foreground/70 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274]"
               aria-label="Collapse discussion"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={handleCollapse}
             >
-              <ChevronUp className="size-4" />
+              {/* The panel slides down when it closes, so the arrow points down. */}
+              <ChevronDown className="size-4" />
             </button>
           </div>
         </div>
@@ -188,7 +223,7 @@ export default function MobileDiscussionSplit({
           onClick={() => onOpenChange(true)}
           className={cn(
             "flex shrink-0 flex-col items-center justify-center bg-card border-t border-border rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.06)]",
-            "w-full text-left"
+            "w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#52b274]"
           )}
           style={{ height: DISCUSSION_BAR_HEIGHT_PX }}
         >
@@ -196,7 +231,7 @@ export default function MobileDiscussionSplit({
           <div className="w-10 h-1 rounded-full bg-muted-foreground/30 mt-1.5 mb-1 opacity-0" />
           <div className="flex w-full items-center gap-2 px-4 pb-2">
             <span className="text-sm font-semibold text-foreground">{title}</span>
-            <ChevronDown className="ml-auto size-4 text-muted-foreground" />
+            <ChevronUp className="ml-auto size-4 text-foreground/70" aria-hidden="true" />
           </div>
         </button>
       ) : null}

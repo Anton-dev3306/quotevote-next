@@ -156,7 +156,69 @@ describe("MobileDiscussionSplit", () => {
     const quotePane = split.querySelector(
       '[data-post-detail-pane="content"]'
     ) as HTMLElement;
-    expect(quotePane).toHaveStyle({ height: "55%" });
+    // Dragging 100px of a 1000px split adds 10% to the quote pane.
+    expect(quotePane).toHaveStyle({ height: `${Math.round((DEFAULT_QUOTE_RATIO + 0.1) * 100)}%` });
+  });
+
+  it("opens at about half and half (#516)", () => {
+    expect(DEFAULT_QUOTE_RATIO).toBe(0.5);
+  });
+
+  it("resizes from the keyboard without ever collapsing (#516)", () => {
+    const onOpenChange = jest.fn();
+    render(
+      <MobileDiscussionSplit
+        open
+        onOpenChange={onOpenChange}
+        discussionCount={2}
+        quotePane={<div>Quote body</div>}
+      >
+        <div>Discussion body</div>
+      </MobileDiscussionSplit>
+    );
+    const divider = screen.getByRole("separator", { name: "Resize quote and discussion panes" });
+    expect(divider).toHaveAttribute("tabindex", "0");
+    expect(divider).toHaveAttribute("aria-valuetext", "Quote 50%, discussion 50%");
+
+    fireEvent.keyDown(divider, { key: "ArrowUp" });
+    expect(divider).toHaveAttribute("aria-valuenow", "45");
+    fireEvent.keyDown(divider, { key: "ArrowDown", shiftKey: true });
+    expect(divider).toHaveAttribute("aria-valuenow", "55");
+    for (let i = 0; i < 10; i += 1) fireEvent.keyDown(divider, { key: "ArrowDown" });
+    expect(Number(divider.getAttribute("aria-valuenow"))).toBeLessThan(80);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(divider, { key: "Enter" });
+    expect(divider).toHaveAttribute("aria-valuenow", "50");
+  });
+
+  it("points the open arrow up and the close arrow down", () => {
+    const { rerender, container } = render(
+      <MobileDiscussionSplit
+        open={false}
+        onOpenChange={jest.fn()}
+        discussionCount={2}
+        quotePane={<div>Quote body</div>}
+      >
+        <div>Discussion body</div>
+      </MobileDiscussionSplit>
+    );
+    expect(
+      screen.getByTestId("discussion-collapsed-bar").querySelector(".lucide-chevron-up")
+    ).not.toBeNull();
+    rerender(
+      <MobileDiscussionSplit
+        open
+        onOpenChange={jest.fn()}
+        discussionCount={2}
+        quotePane={<div>Quote body</div>}
+      >
+        <div>Discussion body</div>
+      </MobileDiscussionSplit>
+    );
+    expect(
+      screen.getByLabelText("Collapse discussion").querySelector(".lucide-chevron-down")
+    ).not.toBeNull();
+    expect(container).toBeTruthy();
   });
 
   it("does not start a resize from the collapse button", () => {
