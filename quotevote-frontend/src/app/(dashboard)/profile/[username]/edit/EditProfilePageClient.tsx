@@ -137,7 +137,9 @@ export default function EditProfilePageClient({
     resolver: zodResolver(schema),
     defaultValues: { name, username, bio: savedBio },
     values: { name, username, bio: savedBio },
-    resetOptions: { keepDirtyValues: true },
+    // Saved values can arrive after the user has typed and pressed Save; keep both
+    // their edits and any validation errors when they do.
+    resetOptions: { keepDirtyValues: true, keepErrors: true },
   });
 
   const isDirty = form.formState.isDirty || bannerDirty;
