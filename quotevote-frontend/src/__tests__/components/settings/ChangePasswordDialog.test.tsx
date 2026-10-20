@@ -136,6 +136,11 @@ describe("ChangePasswordDialog", () => {
     );
   });
 
+  it("is unavailable until the account is loaded", () => {
+    render(<ChangePasswordDialog userId="" username="" />);
+    expect(screen.getByRole("button", { name: "Change password" })).toBeDisabled();
+  });
+
   it("clears what was typed when cancelled", () => {
     render(<ChangePasswordDialog userId="user-1" username="testuser" />);
     open();

@@ -122,6 +122,7 @@ export default function ChangePasswordDialog({ userId, username }: ChangePasswor
             type="button"
             variant="outline"
             data-testid="change-password-button"
+            disabled={!userId}
             className={cn("shrink-0 border-[#8a8a93] dark:border-[#6e7681]", FOCUS_RING_CLASS)}
           >
             <KeyRound className="size-4" aria-hidden="true" />
