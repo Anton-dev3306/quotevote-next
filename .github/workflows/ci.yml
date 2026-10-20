@@ -93,6 +93,15 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      # Otherwise the production build only runs on Vercel: the E2E job below
+      # skips itself without its secret. The build never calls the API, so
+      # placeholder URLs are enough.
+      - name: Build
+        env:
+          NEXT_PUBLIC_SERVER_URL: http://localhost:4000
+          NEXT_PUBLIC_GRAPHQL_ENDPOINT: http://localhost:4000/graphql
+        run: pnpm build
+
   e2e:
     name: Frontend E2E
     runs-on: ubuntu-latest
