@@ -43,3 +43,9 @@ export interface SettingsUserData {
   themePreference?: 'light' | 'dark'
   [key: string]: unknown
 }
+
+/** Change Password in Settings (#536 follow-up on PR #595) */
+export interface ChangePasswordDialogProps {
+  userId: string
+  username: string
+}

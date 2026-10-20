@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,6 +23,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import ChangePasswordDialog from '@/components/settings/ChangePasswordDialog'
 import { UPDATE_USER } from '@/graphql/mutations'
 import { GET_USER } from '@/graphql/queries'
 import { replaceGqlError } from '@/lib/utils/replaceGqlError'
@@ -31,7 +32,9 @@ import { useTheme } from '@/context/ThemeContext'
 import { cn } from '@/lib/utils'
 import {
   FOCUS_RING_CLASS,
+  FORM_ERROR_TEXT_CLASS,
   FORM_FIELD_CLASS,
+  FORM_LABEL_CLASS,
   PRIMARY_ACTION_CLASS,
   SWITCH_CLASS,
 } from '@/lib/constants/formControls'
@@ -44,10 +47,12 @@ const settingsSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsSchema>
 
+const noopSubscribe = () => () => {}
+
 /**
  * Settings (#536): account and app preferences only. Photo, name, username,
  * About and banner are edited from the profile (Edit profile). Sign out lives
- * in the account menu.
+ * in the account menu. The password is changed from Account, in its own dialog.
  */
 export default function SettingsPageClient() {
   const userData = useAppStore((state) => state.user.data) as SettingsUserData | undefined
@@ -61,6 +66,11 @@ export default function SettingsPageClient() {
   const [localDarkMode, setLocalDarkMode] = useState(isDarkMode)
   const [originalDarkMode, setOriginalDarkMode] = useState(isDarkMode)
   const [localBrutalism, setLocalBrutalism] = useState(neoBrutalism)
+  // The theme comes from localStorage, which the server can't read, so the
+  // switches, icon and labels show the saved theme only after hydration.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false)
+  const darkShown = hydrated && localDarkMode
+  const brutalismShown = hydrated && localBrutalism
 
   const [updateUser, { loading }] = useMutation<UpdateUserResponse>(UPDATE_USER)
 
@@ -164,7 +174,7 @@ export default function SettingsPageClient() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel className={FORM_LABEL_CLASS}>Email</FormLabel>
                       <FormControl>
                         <Input
                           type="email"
@@ -174,10 +184,12 @@ export default function SettingsPageClient() {
                           {...field}
                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className={FORM_ERROR_TEXT_CLASS} />
                     </FormItem>
                   )}
                 />
+                {/* Its own dialog and form: saving here never sends a password (#595 review). */}
+                <ChangePasswordDialog userId={userId} username={username} />
               </section>
 
               <Separator />
@@ -190,18 +202,18 @@ export default function SettingsPageClient() {
                   <div className="space-y-0.5">
                     <Label htmlFor="dark-mode">Dark mode</Label>
                     <p className="text-sm text-foreground/75">
-                      {localDarkMode ? 'Dark mode is on' : 'Dark mode is off'}
+                      {darkShown ? 'Dark mode is on' : 'Dark mode is off'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {localDarkMode ? (
+                    {darkShown ? (
                       <Moon className="size-4 text-foreground/70" aria-hidden="true" />
                     ) : (
                       <Sun className="size-4 text-foreground/70" aria-hidden="true" />
                     )}
                     <Switch
                       id="dark-mode"
-                      checked={localDarkMode}
+                      checked={darkShown}
                       onCheckedChange={handleThemeToggle}
                       size="lg"
                       className={cn(SWITCH_CLASS, FOCUS_RING_CLASS)}
@@ -213,7 +225,7 @@ export default function SettingsPageClient() {
                   <div className="space-y-0.5">
                     <Label htmlFor="neo-brutalism">Neo-Brutalism</Label>
                     <p className="text-sm text-foreground/75">
-                      {localBrutalism
+                      {brutalismShown
                         ? 'Bold borders, hard shadows, chunky type'
                         : 'Switch to a raw, high-contrast brutalist look'}
                     </p>
@@ -222,7 +234,7 @@ export default function SettingsPageClient() {
                     <Sparkles className="size-4 text-foreground/70" aria-hidden="true" />
                     <Switch
                       id="neo-brutalism"
-                      checked={localBrutalism}
+                      checked={brutalismShown}
                       onCheckedChange={handleBrutalismToggle}
                       size="lg"
                       className={cn(SWITCH_CLASS, FOCUS_RING_CLASS)}
