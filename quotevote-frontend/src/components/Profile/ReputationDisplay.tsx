@@ -107,9 +107,10 @@ export function ReputationDisplay({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={onRefresh}
+                    onClick={() => onRefresh?.()}
                     disabled={loading}
-                    className="text-white hover:bg-white/20"
+                    aria-label="Refresh reputation"
+                    className="text-white hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white"
                   >
                     <RefreshCw
                       className={cn('h-5 w-5', loading && 'animate-spin')}

@@ -145,5 +145,34 @@ describe('ActivityCard', () => {
     expect(screen.getByTestId('activity-header')).toHaveClass('flex-col')
     expect(screen.getByTestId('activity-header')).toHaveClass('sm:flex-row')
   })
+  describe('keyboard and targets (#536)', () => {
+    it('opens the post with Enter or Space on the card', async () => {
+      const user = userEvent.setup()
+      const onCardClick = jest.fn()
+      render(<ActivityCard {...defaultProps} activityType="COMMENTED" onCardClick={onCardClick} />)
+      const card = screen.getByRole('article', { name: 'commented: Test Post' })
+      card.focus()
+      await user.keyboard('{Enter}')
+      await user.keyboard(' ')
+      expect(onCardClick).toHaveBeenCalledTimes(2)
+    })
+
+    it('leaves Enter on the Save button to the button', async () => {
+      const user = userEvent.setup()
+      const onCardClick = jest.fn()
+      const onLike = jest.fn()
+      render(<ActivityCard {...defaultProps} onCardClick={onCardClick} onLike={onLike} />)
+      screen.getByRole('button', { name: 'Save post' }).focus()
+      await user.keyboard('{Enter}')
+      expect(onLike).toHaveBeenCalledTimes(1)
+      expect(onCardClick).not.toHaveBeenCalled()
+    })
+
+    it('gives Save a 32px target and the avatar a name', () => {
+      render(<ActivityCard {...defaultProps} />)
+      expect(screen.getByRole('button', { name: 'Save post' })).toHaveClass('size-8')
+      expect(screen.getByRole('button', { name: "testuser's profile" })).toBeInTheDocument()
+    })
+  })
 })
 

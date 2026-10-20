@@ -29,7 +29,6 @@ import { getApolloClient } from '@/lib/apollo';
 import { removeToken } from '@/lib/auth';
 import { useAuthModal } from '@/context/AuthModalContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { routeHasPersistentChatPanel } from '@/lib/utils/chatLayout';
 import { toAbsolutePostUrl } from '@/lib/utils/sanitizeUrl';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { usePresenceSubscription } from '@/hooks/usePresenceSubscription';
@@ -51,7 +50,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { SubmitPost, SUBMIT_POST_DIALOG_CLASS } from '@/components/SubmitPost';
-import { DashboardSidebars } from '@/components/DashboardSidebars';
 import { NotificationsPanel } from '@/components/Notifications/NotificationsPanel';
 
 /* ------------------------------------------------------------------ */
@@ -79,13 +77,9 @@ function DashboardClient() {
 }
 
 function ChatPanel() {
-  const pathname = usePathname();
   const chatOpen = useAppStore((s) => s.chat.open);
   const setChatOpen = useAppStore((s) => s.setChatOpen);
-  const isXlUp = useMediaQuery('(min-width: 1280px)');
   const isMobile = useMediaQuery('(max-width: 767px)');
-
-  if (routeHasPersistentChatPanel(pathname) && isXlUp) return null;
 
   return (
     <Sheet open={chatOpen} onOpenChange={setChatOpen} modal={false}>
@@ -127,13 +121,13 @@ function AuthenticatedAccountSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" overlayClassName="z-[70]" className="z-[70] w-80 p-6">
         <SheetHeader>
-          <SheetTitle className="text-[#0A2342] font-bold text-lg">Menu</SheetTitle>
+          <SheetTitle className="text-[#0A2342] dark:text-foreground font-bold text-lg">Menu</SheetTitle>
         </SheetHeader>
         <nav className="mt-1 flex flex-col gap-3" aria-label="Account menu" data-testid="authenticated-account-menu">
           <Button variant="ghost" asChild className="w-full justify-start">
             <Link href="/settings" onClick={close}>
               <Settings2 className="size-4" />
-              Settings & Privacy
+              Settings
             </Link>
           </Button>
           {isAdmin && (
@@ -159,7 +153,7 @@ function AuthenticatedAccountSheet({
           <Button
             type="button"
             variant="ghost"
-            className="w-full justify-start text-red-500 hover:text-red-500 hover:bg-destructive/10"
+            className="w-full justify-start text-[#c62828] hover:text-[#c62828] hover:bg-destructive/10 dark:text-[#ff6b6b] dark:hover:text-[#ff6b6b]"
             onClick={() => {
               close();
               onLogout();
@@ -418,7 +412,7 @@ export function DashboardShell({
                       size={28}
                       className="size-7 flex-shrink-0"
                     />
-                    <span className="text-[13px] font-semibold text-[#52b274] max-w-[90px] truncate">{username}</span>
+                    <span className="text-[13px] font-semibold text-[#2f7a4c] dark:text-[#7fdc9c] max-w-[90px] truncate">{username}</span>
                     <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                   </button>
                 </DropdownMenuTrigger>
@@ -432,7 +426,7 @@ export function DashboardShell({
                         size={64}
                         className="size-16 -mt-8 ring-4 ring-card shadow-md"
                       />
-                      <p className="mt-1 text-[15px] font-bold text-[#52b274]">{username}</p>
+                      <p className="mt-1 text-[15px] font-bold text-[#2f7a4c] dark:text-[#7fdc9c]">{username}</p>
                     </div>
                   </div>
                   <DropdownMenuSeparator className="m-0" />
@@ -441,29 +435,20 @@ export function DashboardShell({
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
                         <User className="size-4 text-muted-foreground" />
                       </div>
-                      <div>
-                        <p className="text-[13px] font-semibold">Your Profile</p>
-                        <p className="text-[11px] text-muted-foreground">View and edit profile</p>
-                      </div>
+                      <span className="text-[13px] font-semibold">Your Profile</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer rounded-lg gap-3 py-2.5 px-3">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
                         <Settings2 className="size-4 text-muted-foreground" />
                       </div>
-                      <div>
-                        <p className="text-[13px] font-semibold">Settings & Privacy</p>
-                        <p className="text-[11px] text-muted-foreground">Manage your account</p>
-                      </div>
+                      <span className="text-[13px] font-semibold">Settings</span>
                     </DropdownMenuItem>
                     {isAdmin && (
                       <DropdownMenuItem onClick={() => router.push('/control-panel')} className="cursor-pointer rounded-lg gap-3 py-2.5 px-3">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#e8f5ee]">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#e8f5ee] dark:bg-[#52b274]/15">
                           <ShieldCheck className="size-4 text-[#52b274]" />
                         </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-[#52b274]">Admin Panel</p>
-                          <p className="text-[11px] text-muted-foreground">Manage the platform</p>
-                        </div>
+                        <span className="text-[13px] font-semibold text-[#2f7a4c] dark:text-[#7fdc9c]">Admin Panel</span>
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator className="my-1" />
@@ -471,10 +456,7 @@ export function DashboardShell({
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-destructive/10">
                         <LogOut className="size-4 text-red-500" />
                       </div>
-                      <div>
-                        <p className="text-[13px] font-semibold text-red-500">Sign out</p>
-                        <p className="text-[11px] text-muted-foreground">See you next time!</p>
-                      </div>
+                      <span className="text-[13px] font-semibold text-[#c62828] dark:text-[#ff6b6b]">Sign out</span>
                     </DropdownMenuItem>
                   </div>
                 </DropdownMenuContent>
@@ -694,11 +676,10 @@ export function DashboardShell({
         )}
       >
         {pathname.startsWith('/profile') || pathname.startsWith('/settings') ? (
-          <div className={cn(loggedIn && 'xl:pr-[360px] 2xl:pr-[420px]')}>
-            <DashboardSidebars />
-            <div className="mx-auto min-w-0 max-w-3xl px-4">
-              {children}
-            </div>
+          // No fixed Messages / Buddy List column here (#536): Profile and Settings
+          // are their own pages, and Messages stays one tap away in the main nav.
+          <div className="mx-auto min-w-0 max-w-3xl px-4">
+            {children}
           </div>
         ) : (
           <div

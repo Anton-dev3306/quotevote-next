@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { Check, ListFilter } from 'lucide-react';
 import Link from 'next/link';
 import type { ProfileViewProps } from '@/types/profile';
 import { ProfileHeader } from './ProfileHeader';
@@ -22,31 +23,13 @@ export const ACTIVITY_FILTERS: Array<{
   { id: 'QUOTED', label: 'Quoted' },
 ];
 
-// Activity filter styling mapping with accessible contrast (RC1-009)
-export const ACTIVITY_FILTER_STYLES: Record<
-  ProfileActivityType,
-  { activeBorder: string; activeText: string; color: string }
-> = {
-  POSTED: {
-    activeBorder: 'border-primary',
-    activeText: 'text-foreground',
-    color: '#52b274',
-  },
-  VOTED: {
-    activeBorder: 'border-[#52b274]',
-    activeText: 'text-[#52b274]',
-    color: '#52b274',
-  },
-  COMMENTED: {
-    activeBorder: 'border-[#ca8a04]',
-    activeText: 'text-[#ca8a04]',
-    color: '#FDD835',
-  },
-  QUOTED: {
-    activeBorder: 'border-[#c026d3]',
-    activeText: 'text-[#c026d3]',
-    color: '#E36DFA',
-  },
+// Dot beside each filter, matching the activity card it shows: post cards have
+// the blue border, votes are green, comments yellow and quotes pink.
+export const ACTIVITY_FILTER_DOT_COLORS: Record<ProfileActivityType, string> = {
+  POSTED: '#56b3ff',
+  VOTED: '#52b274',
+  COMMENTED: '#FDD835',
+  QUOTED: '#E36DFA',
 };
 
 export const ALL_ACTIVITY_TYPES: ProfileActivityType[] = [
@@ -55,6 +38,15 @@ export const ALL_ACTIVITY_TYPES: ProfileActivityType[] = [
   'COMMENTED',
   'QUOTED',
 ];
+
+const NO_ACTIVITY_FILTER: ProfileActivityType[] = [];
+
+const FILTER_CHIP_CLASS =
+  'inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-card';
+const FILTER_CHIP_ACTIVE_CLASS =
+  'border-[#2f7a4c] bg-[#2f7a4c]/10 text-[#2f6f4a] dark:border-[#7fdc9c] dark:bg-[#7fdc9c]/10 dark:text-[#7fdc9c]';
+const FILTER_CHIP_IDLE_CLASS =
+  'border-border text-foreground/80 hover:bg-muted hover:text-foreground';
 
 export function ProfileView({
   profileUser,
@@ -78,6 +70,14 @@ export function ProfileView({
       return [...prev, filterId];
     });
   }, []);
+
+  const isAllActive =
+    selectedFilters.length === 0 || selectedFilters.length === ALL_ACTIVITY_TYPES.length;
+  // Stable reference: a new [] on every render would send the list back to page 1.
+  const activityEvent = useMemo(
+    () => (isAllActive ? NO_ACTIVITY_FILTER : selectedFilters),
+    [isAllActive, selectedFilters]
+  );
 
   if (loading) return <LoadingSpinner />;
 
@@ -112,73 +112,69 @@ export function ProfileView({
     );
   }
 
-  const isAllActive =
-    selectedFilters.length === 0 || selectedFilters.length === ALL_ACTIVITY_TYPES.length;
-
   return (
     <div className="w-full pb-8">
       <ProfileHeader profileUser={profileUser} />
 
       <div className="w-full mt-3">
+        {/* A filter, not tabs (#536): labelled chips that can be combined. */}
         <div
           role="group"
-          aria-label="Profile activity filters. Multiple filters can be active at once."
-          className="sticky top-0 z-10 w-full border-b border-border bg-background/95 backdrop-blur-sm"
+          aria-labelledby="profile-activity-filter-label"
+          data-testid="profile-activity-filters"
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5"
         >
-          <div className="flex h-11 items-center justify-between overflow-x-auto px-0">
-            {/* All / clear */}
+          <span
+            id="profile-activity-filter-label"
+            className="mr-1 inline-flex items-center gap-1.5 text-sm font-medium text-foreground/80"
+          >
+            <ListFilter className="size-4" aria-hidden="true" />
+            Show
+          </span>
+          <button
+            type="button"
+            aria-pressed={isAllActive}
+            data-state={isAllActive ? 'active' : 'inactive'}
+            onClick={handleSelectAll}
+            className={cn(FILTER_CHIP_CLASS, isAllActive ? FILTER_CHIP_ACTIVE_CLASS : FILTER_CHIP_IDLE_CLASS)}
+          >
+            {isAllActive && <Check className="size-3.5" aria-hidden="true" />}
+            All
+          </button>
+
+          {ACTIVITY_FILTERS.map(({ id, label }) => {
+            const isActive = !isAllActive && selectedFilters.includes(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={isActive}
+                data-state={isActive ? 'active' : 'inactive'}
+                onClick={() => handleToggleFilter(id)}
+                className={cn(FILTER_CHIP_CLASS, isActive ? FILTER_CHIP_ACTIVE_CLASS : FILTER_CHIP_IDLE_CLASS)}
+              >
+                {isActive ? (
+                  <Check className="size-3.5" aria-hidden="true" />
+                ) : (
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: ACTIVITY_FILTER_DOT_COLORS[id] }}
+                    aria-hidden="true"
+                  />
+                )}
+                {label}
+              </button>
+            );
+          })}
+
+          {!isAllActive && (
             <button
               type="button"
-              aria-pressed={isAllActive}
-              data-state={isAllActive ? 'active' : 'inactive'}
               onClick={handleSelectAll}
-              className={cn(
-                'flex-1 h-full min-w-[50px] inline-flex items-center justify-center whitespace-nowrap px-1 sm:px-3 text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border-b-2',
-                isAllActive
-                  ? 'border-primary text-foreground font-semibold'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              )}
+              className="ml-auto inline-flex min-h-8 items-center rounded-md px-2 text-sm font-medium text-[#2f6f4a] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] dark:text-[#7fdc9c]"
             >
-              All
+              Clear
             </button>
-
-            {/* Activity Filters: Posts, Voted, Commented, Quoted */}
-            {ACTIVITY_FILTERS.map(({ id, label }) => {
-              const isActive = !isAllActive && selectedFilters.includes(id);
-              const filterStyle = ACTIVITY_FILTER_STYLES[id];
-
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={isActive}
-                  data-state={isActive ? 'active' : 'inactive'}
-                  onClick={() => handleToggleFilter(id)}
-                  className={cn(
-                    'flex-1 h-full min-w-[60px] inline-flex items-center justify-center whitespace-nowrap px-1 sm:px-3 text-xs sm:text-sm font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border-b-2',
-                    isActive
-                      ? `${filterStyle.activeBorder} ${filterStyle.activeText} font-semibold`
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          {!isAllActive && selectedFilters.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground border-t border-border/50">
-              <span>
-                Showing {selectedFilters.length} filter{selectedFilters.length === 1 ? '' : 's'} (combined)
-              </span>
-              <button
-                type="button"
-                onClick={handleSelectAll}
-                className="ml-auto font-medium text-primary hover:underline"
-              >
-                Clear filters
-              </button>
-            </div>
           )}
         </div>
 
@@ -186,7 +182,8 @@ export function ProfileView({
         <div className="mt-4" data-testid="profile-activity-section">
           <PaginatedActivityList
             userId={profileUser._id}
-            activityEvent={isAllActive ? [] : selectedFilters}
+            activityEvent={activityEvent}
+            onClearFilters={isAllActive ? undefined : handleSelectAll}
             defaultPageSize={15}
             maxVisiblePages={5}
           />

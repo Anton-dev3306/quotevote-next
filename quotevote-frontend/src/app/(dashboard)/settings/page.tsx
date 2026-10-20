@@ -3,7 +3,7 @@ import SettingsPageClient from './SettingsPageClient'
 
 export const metadata: Metadata = {
   title: 'Settings — Quote.Vote',
-  description: 'Manage your profile, account, and security settings.',
+  description: 'Your account and app preferences.',
 }
 
 export const dynamic = 'force-dynamic'
