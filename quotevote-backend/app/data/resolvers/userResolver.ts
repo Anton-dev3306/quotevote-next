@@ -64,7 +64,6 @@ const BOT_REPORT_ORDER: Record<
   lastReportDate: [{ lastBotReportDate: 'desc' }, { botReports: 'desc' }],
 };
 
-
 type BotReportSortBy = keyof typeof BOT_REPORT_ORDER;
 
 function isBotReportSortBy(value: string): value is BotReportSortBy {
@@ -81,8 +80,6 @@ type UpdateUserInput = {
   bio?: string | null;
   contributorBadge?: boolean | null;
 };
-
-
 
 export const userResolver = {
   Query: {
@@ -168,8 +165,6 @@ export const userResolver = {
         take: USER_REPORTS_LIMIT,
       });
 
-      
-
       // Loaded separately so a report whose account no longer exists
       // resolves to null instead of failing the whole list.
       const userIds = [...new Set(reports.flatMap((r) => [r.reporterId, r.reportedUserId]))];
@@ -199,7 +194,7 @@ export const userResolver = {
         };
       });
     },
-      getBotReportedUsers: async (
+    getBotReportedUsers: async (
       _parent: unknown,
       args: { sortBy?: string | null; limit?: number | null },
       context: GraphQLContext
@@ -239,7 +234,6 @@ export const userResolver = {
       return users.map((u) => toPublicUser(u as PrismaUserRecord));
     },
   },
-
 
   Mutation: {
     updateUser: async (
@@ -581,8 +575,5 @@ export const userResolver = {
         message: 'Bot report submitted successfully',
       };
     },
-  
   },
 };
-
-
