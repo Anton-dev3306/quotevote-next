@@ -84,6 +84,9 @@ export const Mutation = `type Mutation {
   " Update user profile details "
   updateUser(user: UserInput!): User
 
+  " Complete invite-based signup with Terms acceptance (token is not a session) "
+  completeSignup(token: String!, username: String!, password: String!, acceptedTermsVersion: String!): User
+
   " Approve or reject user access invite (admin only) "
   sendUserInviteApproval(userId: String!, inviteStatus: String!): JSON
 

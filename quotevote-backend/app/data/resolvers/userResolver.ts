@@ -12,6 +12,9 @@ import {
 import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
 
+/** Legacy invite codes: 1 = requested, 4 = approved (not yet signed up). */
+const UNFINISHED_INVITE_STATUSES = new Set([1, 4]);
+
 const OBJECT_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
 
 function isObjectId(id: string): boolean {
@@ -288,6 +291,22 @@ export const userResolver = {
           }
           throw err;
         }
+      }
+
+      // Unfinished invite accounts (status 1/4, no password) must use completeSignup.
+      const targetBeforeUpdate = await context.prisma.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, password: true, status: true },
+      });
+      if (
+        targetBeforeUpdate &&
+        !targetBeforeUpdate.password &&
+        targetBeforeUpdate.status != null &&
+        UNFINISHED_INVITE_STATUSES.has(targetBeforeUpdate.status)
+      ) {
+        throw new GraphQLError('Pending invite accounts must complete signup via completeSignup', {
+          extensions: { code: 'FORBIDDEN' },
+        });
       }
 
       const updates: Prisma.UserUpdateInput = {};

@@ -17,6 +17,8 @@ const PUBLIC_QUERIES: readonly string[] = [
   'sendInvestorMail',
   'sendPasswordResetEmail',
   'verifyUserPasswordResetToken',
+  'verifyInviteSignupToken',
+  'completeSignup',
   'updateUserPassword',
   'popPrediction',
   'posts',
@@ -57,9 +59,7 @@ export function requireAuth(req: Request): boolean;
  * @returns true if authentication is required, false if query is public
  */
 export function requireAuth(context: GraphQLContext): boolean;
-export function requireAuth(
-  input: string | null | undefined | Request | GraphQLContext
-): boolean {
+export function requireAuth(input: string | null | undefined | Request | GraphQLContext): boolean {
   // Extract query string from different input types
   let query: string | null | undefined;
 

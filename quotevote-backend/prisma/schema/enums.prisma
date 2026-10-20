@@ -87,3 +87,8 @@ enum ReportReason {
   fake_account
   other
 }
+
+enum TermsAcceptanceSource {
+  direct_registration
+  invite_completion
+}
