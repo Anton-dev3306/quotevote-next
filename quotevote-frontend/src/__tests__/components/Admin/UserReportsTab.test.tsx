@@ -40,7 +40,7 @@ const reportsMock = {
           description: 'Spamming posts',
           severity: 'medium',
           status: 'pending',
-          createdAt: '2026-03-10T00:00:00.000Z',
+          createdAt: '1773144000000', // the live API sends String-typed dates as milliseconds
         },
       ],
     },
@@ -102,6 +102,9 @@ describe('UserReportsTab', () => {
       const spamBadges = screen.getAllByText('spam')
       expect(spamBadges.length).toBeGreaterThan(0)
     })
+    // The live API sends the date as milliseconds in a string.
+    expect(screen.getAllByText('Mar 10, 2026').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Invalid date/)).not.toBeInTheDocument()
   })
 
   it('shows report count after selecting a user', async () => {

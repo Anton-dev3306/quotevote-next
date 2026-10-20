@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { useMutation } from '@apollo/client/react'
 import moment from 'moment'
+import { parseApiDate } from '@/lib/utils/apiDate'
 import { Search, Loader2, ArrowUpDown, Mail, CheckCircle2, XCircle, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -236,7 +237,7 @@ export default function UserInviteRequestsTab({ data, onRefresh }: UserInviteReq
                           </div>
                         </td>
                         <td className="px-5 py-3.5 text-sm text-muted-foreground">
-                          {moment(row.joined).format('MMM DD, YYYY')}
+                          {moment(parseApiDate(row.joined)).format('MMM DD, YYYY')}
                         </td>
                         <td className="px-5 py-3.5">
                           <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${cfg.className}`}>
@@ -268,7 +269,7 @@ export default function UserInviteRequestsTab({ data, onRefresh }: UserInviteReq
                         {cfg.label}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground">{moment(row.joined).format('MMM DD, YYYY')}</p>
+                    <p className="text-xs text-muted-foreground">{moment(parseApiDate(row.joined)).format('MMM DD, YYYY')}</p>
                     <ActionButtons status={row.status} id={row._id} onActionComplete={handleActionComplete} />
                   </div>
                 )

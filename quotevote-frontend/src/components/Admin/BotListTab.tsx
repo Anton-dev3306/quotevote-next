@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import moment from 'moment'
+import { parseApiDate } from '@/lib/utils/apiDate'
 import { AlertCircle, Bot, ShieldOff, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -182,8 +183,8 @@ export default function BotListTab() {
                       <td className="px-5 py-3.5">
                         {user.lastBotReportDate ? (
                           <div>
-                            <p className="text-sm">{moment(user.lastBotReportDate).format('MMM D, YYYY')}</p>
-                            <p className="text-xs text-muted-foreground">{moment(user.lastBotReportDate).fromNow()}</p>
+                            <p className="text-sm">{moment(parseApiDate(user.lastBotReportDate)).format('MMM D, YYYY')}</p>
+                            <p className="text-xs text-muted-foreground">{moment(parseApiDate(user.lastBotReportDate)).fromNow()}</p>
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">—</span>
@@ -266,7 +267,7 @@ export default function BotListTab() {
                   </div>
                   {user.lastBotReportDate && (
                     <p className="text-xs text-muted-foreground">
-                      Last reported {moment(user.lastBotReportDate).fromNow()}
+                      Last reported {moment(parseApiDate(user.lastBotReportDate)).fromNow()}
                     </p>
                   )}
                   {isDisabled ? (
