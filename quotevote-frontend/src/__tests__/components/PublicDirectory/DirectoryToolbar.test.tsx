@@ -121,4 +121,30 @@ describe('DirectoryToolbar search input', () => {
     render(<DirectoryToolbar />)
     expect(screen.queryByText(/@username/)).not.toBeInTheDocument()
   })
+
+  describe('Search box sync (#528)', () => {
+    it('empties the box when the search is cleared from outside it', () => {
+      mockSearch = 'q=civic'
+      const { rerender } = render(<DirectoryToolbar />)
+      const box = screen.getByRole('searchbox')
+      expect(box).toHaveValue('civic')
+
+      // e.g. "Clear search and filters" on an empty results page
+      mockSearch = ''
+      rerender(<DirectoryToolbar />)
+      expect(box).toHaveValue('')
+      expect(mockReplace).not.toHaveBeenCalled()
+    })
+
+    it("doesn't overwrite what is being typed when the URL catches up", () => {
+      mockSearch = 'q=civ'
+      const { rerender } = render(<DirectoryToolbar />)
+      const box = screen.getByRole('searchbox')
+      fireEvent.change(box, { target: { value: 'civic' } })
+
+      mockSearch = 'q=civi'
+      rerender(<DirectoryToolbar />)
+      expect(box).toHaveValue('civic')
+    })
+  })
 })

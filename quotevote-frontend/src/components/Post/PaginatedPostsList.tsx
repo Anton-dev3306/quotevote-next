@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery } from '@apollo/client/react'
 import type { DocumentNode } from '@apollo/client'
-import { Loader2 } from 'lucide-react'
+import { AlertTriangle, FileText, Loader2, RotateCcw, SearchX } from 'lucide-react'
 import { PaginatedList } from '@/components/common/PaginatedList'
 import { Button } from '@/components/ui/button'
 import PostCard from './PostCard'
@@ -46,6 +47,7 @@ export default function PaginatedPostsList({
   query,
   dataKey = 'posts',
 }: PaginatedPostsListProps & { query?: DocumentNode; dataKey?: string }) {
+  const router = useRouter()
   const hiddenPosts = useAppStore((state) => state.ui.hiddenPosts) || []
 
   // Load-more state
@@ -223,33 +225,66 @@ export default function PaginatedPostsList({
     />
   )
 
-  // Render empty state
-  const renderEmpty = () => (
-    <div className="text-center py-8">
-      <div className="text-6xl mb-4">📝</div>
-      <h3 className="text-gray-600 mb-2">No posts found</h3>
-      <p className="text-gray-400">
-        {searchKey ? `No posts match your search for "${searchKey}"` : 'No posts available at the moment'}
-      </p>
-    </div>
+  // Render empty state: say why the list is empty and offer a way out (#528)
+  const hasFilters = Boolean(
+    searchKey || groupId || friendsOnly || interactions || startDateRange || endDateRange
   )
+  const otherFilters = Boolean(groupId || friendsOnly || interactions || startDateRange || endDateRange)
+  const clearFilters = () => {
+    router.replace(window.location.pathname)
+  }
+  const renderEmpty = () => {
+    const EmptyIcon = hasFilters ? SearchX : FileText
+    let message = 'New posts will show up here.'
+    if (searchKey) {
+      message = `Nothing matches \u201c${searchKey}\u201d${otherFilters ? ' with the current filters' : ''}. Try other words${otherFilters ? ' or clear the filters' : ''}.`
+    } else if (friendsOnly && !groupId && !startDateRange && !endDateRange) {
+      message = 'Posts from people you follow will show up here.'
+    } else if (hasFilters) {
+      message = 'Try another tag or date range, or clear the filters.'
+    }
+    return (
+      <div
+        className="mx-4 my-4 flex flex-col items-center rounded-lg border border-border/60 bg-card px-6 py-10 text-center"
+        role="status"
+        data-testid="posts-empty"
+      >
+        <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-muted">
+          <EmptyIcon className="size-6 text-muted-foreground" aria-hidden="true" />
+        </span>
+        <h3 className="text-base font-semibold text-foreground">
+          {hasFilters ? 'No posts found' : 'No posts yet'}
+        </h3>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{message}</p>
+        {hasFilters && (
+          <Button type="button" variant="outline" className="mt-4" onClick={clearFilters}>
+            Clear search and filters
+          </Button>
+        )}
+      </div>
+    )
+  }
 
-  // Render error state
-  const renderError = (error: Error | { message?: string }, onRetry?: () => void) => (
-    <div className="text-center py-8">
-      <div className="text-6xl mb-4">⚠️</div>
-      <h3 className="text-red-600 mb-2">Something went wrong</h3>
-      <p className="text-gray-600 mb-4">
-        {error?.message || 'An error occurred while loading posts'}
+  // Render error state: plain language, never the raw error text
+  const renderError = (_error: Error | { message?: string }, onRetry?: () => void) => (
+    <div
+      className="mx-4 my-4 flex flex-col items-center rounded-lg border border-border/60 bg-card px-6 py-10 text-center"
+      role="alert"
+      data-testid="posts-error"
+    >
+      <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-destructive/10">
+        <AlertTriangle className="size-6 text-destructive" aria-hidden="true" />
+      </span>
+      <h3 className="text-base font-semibold text-foreground">Posts couldn&apos;t load</h3>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        Check your connection and try again.
       </p>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="px-4 py-2 bg-[#52b274] text-white border-none rounded cursor-pointer hover:bg-[#45a066] transition-colors"
-        >
-          Try Again
-        </button>
+        // Call it without the click event: refetch would treat the event as query variables.
+        <Button type="button" variant="outline" className="mt-4" onClick={() => onRetry()}>
+          <RotateCcw className="size-4" aria-hidden="true" />
+          Try again
+        </Button>
       )}
     </div>
   )
