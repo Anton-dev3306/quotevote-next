@@ -137,8 +137,12 @@ export const userInviteResolver = {
           });
         }
 
-        // Re-open a prior request / decline as a fresh request (status 1).
-        if (!existingUser.password) {
+        // Re-open a declined request as status 1. Do not touch approved invites
+        // (status 4) — resetting those would invalidate the emailed signup link.
+        if (
+          !existingUser.password &&
+          existingUser.status === INVITE_STATUS_DECLINED
+        ) {
           user = await context.prisma.user.update({
             where: { id: existingUser.id },
             data: { status: INVITE_STATUS_REQUESTED },

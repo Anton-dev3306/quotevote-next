@@ -1,8 +1,15 @@
 import { GraphQLError } from 'graphql';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { userResolver } from '~/data/resolvers/userResolver';
 import type { GraphQLContext } from '~/types/graphql';
 import { PUBLIC_USER_SELECT } from '~/data/utils/userPrismaMapper';
+
+jest.mock('bcryptjs', () => ({
+  genSalt: jest.fn().mockResolvedValue('salt'),
+  hash: jest.fn().mockResolvedValue('hashed-password'),
+}));
+
 const actorId = '507f1f77bcf86cd799439011';
 const otherId = '507f1f77bcf86cd799439012';
 
@@ -210,6 +217,52 @@ describe('userResolver', () => {
       await expect(
         userResolver.Mutation.updateUser(null, { user: { _id: actorId, bio: 'Test' } }, ctx)
       ).rejects.toThrow(/User not found/);
+    });
+
+    it('hashes password changes for completed accounts', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: actorId,
+        password: 'already-set',
+        status: null,
+      });
+      (ctx.prisma.user.update as jest.Mock).mockResolvedValue({
+        id: actorId,
+        username: 'alice',
+      });
+
+      await userResolver.Mutation.updateUser(
+        null,
+        { user: { _id: actorId, password: 'NewPassword1' } },
+        ctx
+      );
+
+      expect(bcrypt.genSalt).toHaveBeenCalledWith(10);
+      expect(bcrypt.hash).toHaveBeenCalledWith('NewPassword1', 'salt');
+      expect(ctx.prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: actorId },
+          data: { password: 'hashed-password' },
+        })
+      );
+    });
+
+    it('rejects unfinished invite accounts from updateUser', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: actorId,
+        password: null,
+        status: 4,
+      });
+
+      await expect(
+        userResolver.Mutation.updateUser(
+          null,
+          { user: { _id: actorId, password: 'NewPassword1' } },
+          ctx
+        )
+      ).rejects.toThrow(/complete signup via completeSignup/);
+      expect(ctx.prisma.user.update).not.toHaveBeenCalled();
     });
   });
 

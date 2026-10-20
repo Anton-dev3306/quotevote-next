@@ -39,7 +39,7 @@ Frontend wiring (`completeSignup` / `verifyInviteSignupToken` / `/terms`) ships 
 
 Invite lifecycle uses legacy numeric `User.status` (admin UI / `userInviteRequests` already filter on these). Do **not** overload `accountStatus` for invite state — that field stays for moderation (`active` / `disabled` / …).
 
-1. `requestUserAccess` — creates (or re-opens) a user with `status: 1`, email as temporary username, no password.
+1. `requestUserAccess` — creates a user with `status: 1`, email as temporary username, no password. Re-opens only declined invites (`status: 2` → `1`); approved invites (`status: 4`) are left alone so emailed signup links stay valid.
 2. `sendUserInviteApproval` (admin) — approve → `status: 4` and email a one-day invite-signup token; decline → `status: 2` (not `accountStatus: disabled`).
 3. `verifyInviteSignupToken` — public query for the signup form (requires `status: 4`, no password).
 4. `completeSignup` — sets username/password, ensures `accountStatus: active`, writes `TermsAcceptance` with `invite_completion`.

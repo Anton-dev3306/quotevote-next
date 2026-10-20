@@ -1,4 +1,4 @@
-import { gql } from "@apollo/client";
+import { gql } from '@apollo/client'
 
 /**
  * Get buddy list query
@@ -17,33 +17,33 @@ export const GET_BUDDY_LIST = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Get all messages for a chat room
  * Used by the conversation view (MessageItemList) and Discussion tab
  */
 export const GET_ROOM_MESSAGES = gql`
-  query getRoomMessages($messageRoomId: String!) {
-    messages(messageRoomId: $messageRoomId) {
-      _id
-      messageRoomId
-      userId
-      userName
-      title
-      text
-      created
-      type
-      readBy
-      user {
+    query getRoomMessages($messageRoomId: String!) {
+      messages(messageRoomId: $messageRoomId) {
         _id
-        name
-        username
-        avatar
+        messageRoomId
+        userId
+        userName
+        title
+        text
+        created
+        type
+        readBy
+        user {
+          _id
+          name
+          username
+          avatar
+        }
       }
     }
-  }
-`;
+  `
 
 /**
  * Get roster query (includes pending requests and blocked users)
@@ -64,7 +64,7 @@ export const GET_ROSTER = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Verify password reset token query
@@ -73,7 +73,7 @@ export const VERIFY_PASSWORD_RESET_TOKEN = gql`
   query VerifyUserPasswordResetToken($token: String!) {
     verifyUserPasswordResetToken(token: $token)
   }
-`;
+`
 
 /**
  * Get groups query for post creation
@@ -91,7 +91,7 @@ export const GROUPS_QUERY = gql`
       description
     }
   }
-`;
+`
 
 /**
  * Get a single group by ID
@@ -103,7 +103,7 @@ export const GET_GROUP = gql`
       title
     }
   }
-`;
+`
 
 /**
  * Get action reactions query
@@ -117,7 +117,7 @@ export const GET_ACTION_REACTIONS = gql`
       emoji
     }
   }
-`;
+`
 
 /**
  * Get a single post by ID
@@ -204,7 +204,7 @@ export const GET_POST = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Get top posts query
@@ -284,7 +284,7 @@ export const GET_TOP_POSTS = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Paginated version of GET_TOP_POSTS for page-based pagination
@@ -361,7 +361,7 @@ export const GET_PAGINATED_POSTS = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Get friends posts query
@@ -429,7 +429,7 @@ export const GET_FRIENDS_POSTS = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Get featured posts query
@@ -508,7 +508,7 @@ export const GET_FEATURED_POSTS = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Get user by username query
@@ -552,7 +552,7 @@ export const GET_USER = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Optional About/bio fetch. Hosted GraphQL rejects unknown `User.bio`;
@@ -566,7 +566,7 @@ export const GET_USER_BIO = gql`
       bio
     }
   }
-`;
+`
 
 /**
  * Get user follow info (followers or following)
@@ -578,7 +578,7 @@ export const GET_FOLLOW_INFO = gql`
   query getUserFollowInfo($username: String!, $filter: String) {
     getUserFollowInfo(username: $username, filter: $filter)
   }
-`;
+`
 
 /**
  * Get chat room between two users
@@ -595,7 +595,7 @@ export const GET_CHAT_ROOM = gql`
       avatar
     }
   }
-`;
+`
 
 /**
  * Get all chat rooms for the current user
@@ -621,7 +621,41 @@ export const GET_CHAT_ROOMS = gql`
       }
     }
   }
-`;
+`
+
+/**
+ * Message text and authors for each room, used by the Messages search (#531).
+ * Fetched only while the user is searching, not with the polled room list.
+ */
+export const GET_CHAT_ROOM_SEARCH_DATA = gql`
+  query getChatRoomSearchData {
+    messageRooms {
+      _id
+      messages {
+        _id
+        text
+        userId
+        user {
+          _id
+          username
+          name
+        }
+      }
+    }
+  }
+`
+
+/**
+ * The tag (group) of a discussion's post, shown on its Messages card (#531)
+ */
+export const GET_POST_GROUP_ID = gql`
+  query getPostGroupId($postId: String!) {
+    post(postId: $postId) {
+      _id
+      groupId
+    }
+  }
+`
 
 /**
  * Search users by name or username
@@ -636,7 +670,7 @@ export const SEARCH_USERNAMES = gql`
       contributorBadge
     }
   }
-`;
+`
 
 /**
  * Search query for posts and users
@@ -665,7 +699,7 @@ export const SEARCH = gql`
       avatar
     }
   }
-`;
+`
 
 /**
  * Get message reactions query
@@ -680,7 +714,7 @@ export const GET_MESSAGE_REACTIONS = gql`
       userId
     }
   }
-`;
+`
 
 /**
  * Get users query (admin only)
@@ -695,7 +729,7 @@ export const GET_USERS = gql`
       contributorBadge
     }
   }
-`;
+`
 
 /**
  * Get user activity query
@@ -799,7 +833,7 @@ export const GET_USER_ACTIVITY = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Get notifications query
@@ -831,7 +865,7 @@ export const GET_NOTIFICATIONS = gql`
       }
     }
   }
-`;
+`
 
 /**
  * Check duplicate email query
@@ -841,7 +875,7 @@ export const GET_CHECK_DUPLICATE_EMAIL = gql`
   query checkDuplicateEmail($email: String!) {
     checkDuplicateEmail(email: $email)
   }
-`;
+`
 
 /**
  * Get user invitation requests (admin only)
@@ -855,7 +889,7 @@ export const USER_INVITE_REQUESTS = gql`
       _id
     }
   }
-`;
+`
 
 /**
  * Get user reports (admin only)
@@ -874,7 +908,7 @@ export const GET_USER_REPORTS = gql`
       createdAt
     }
   }
-`;
+`
 
 /**
  * Get users reported as bots (admin only)
@@ -895,4 +929,4 @@ export const GET_BOT_REPORTED_USERS = gql`
       contributorBadge
     }
   }
-`;
+`

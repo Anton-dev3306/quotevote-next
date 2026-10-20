@@ -302,6 +302,60 @@ describe('userInviteResolver', () => {
       );
       expect(result._id).toBe(userId);
     });
+
+    it('re-opens a declined invite to status 1', async () => {
+      const ctx = mockContext({ user: null });
+      (ctx.prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: userId,
+        email: 'declined@example.com',
+        username: 'declined@example.com',
+        status: 2,
+        accountStatus: 'active',
+        password: null,
+      });
+      (ctx.prisma.user.update as jest.Mock).mockResolvedValue({
+        id: userId,
+        email: 'declined@example.com',
+        username: 'declined@example.com',
+        status: 1,
+        accountStatus: 'active',
+        password: null,
+      });
+
+      await userInviteResolver.Mutation.requestUserAccess(
+        null,
+        { requestUserAccessInput: { email: 'declined@example.com' } },
+        ctx
+      );
+
+      expect(ctx.prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: userId },
+          data: { status: 1 },
+        })
+      );
+    });
+
+    it('does not reset an approved invite (status 4) back to requested', async () => {
+      const ctx = mockContext({ user: null });
+      (ctx.prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: userId,
+        email: 'approved@example.com',
+        username: 'approved@example.com',
+        status: 4,
+        accountStatus: 'active',
+        password: null,
+      });
+
+      const result = await userInviteResolver.Mutation.requestUserAccess(
+        null,
+        { requestUserAccessInput: { email: 'approved@example.com' } },
+        ctx
+      );
+
+      expect(ctx.prisma.user.update).not.toHaveBeenCalled();
+      expect(result._id).toBe(userId);
+    });
   });
 
   describe('sendUserInviteApproval', () => {
