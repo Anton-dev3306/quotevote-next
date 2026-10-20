@@ -68,7 +68,7 @@ export default function SettingsPageClient() {
     resolver: zodResolver(settingsSchema),
     defaultValues: { email },
     values: { email },
-    resetOptions: { keepDirtyValues: true },
+    resetOptions: { keepDirtyValues: true, keepErrors: true },
   })
 
   useEffect(() => {

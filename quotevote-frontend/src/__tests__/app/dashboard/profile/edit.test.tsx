@@ -168,6 +168,22 @@ describe("Edit Profile page (#536)", () => {
     expect(screen.getByLabelText("Username")).toHaveAttribute("aria-invalid", "true");
   });
 
+  it("keeps a validation error when the saved About arrives after Save", async () => {
+    render(<EditProfilePageClient username="testuser" />, {
+      mocks: [{ ...getUserBioMock, delay: 300 }],
+    });
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "ab" } });
+    const save = screen.getByRole("button", { name: /save changes/i });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+    expect(await screen.findByText("Username must be at least 4 characters")).toBeInTheDocument();
+
+    // The bio response lands now and refreshes the form's saved values.
+    await waitFor(() => expect(screen.getByLabelText("About")).toHaveValue("Thoughtful dialogue."));
+    expect(screen.getByText("Username must be at least 4 characters")).toBeInTheDocument();
+    expect(screen.getByLabelText("Username")).toHaveValue("ab");
+  });
+
   it("accepts an existing username shorter than 4 characters when it is unchanged", async () => {
     useAppStore.getState().setUserData({ ...mockUser, username: "bob" });
     render(<EditProfilePageClient username="bob" />, {
