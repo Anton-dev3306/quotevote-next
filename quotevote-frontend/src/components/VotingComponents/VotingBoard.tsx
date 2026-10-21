@@ -1,13 +1,23 @@
 "use client";
 
-import { Fragment, useState, useCallback, useLayoutEffect, useEffect, useRef } from "react";
+import {
+  Fragment,
+  useState,
+  useCallback,
+  useLayoutEffect,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { flushSync } from "react-dom";
 import Highlighter from "react-highlight-words";
 import { parseDomSelection } from "@/lib/utils/parserDom";
 import { cn } from "@/lib/utils";
 import { scrollLinkedPassageIntoView } from "@/lib/utils/discussionSplit";
+import { describePassageActivity, passageActivityTotal } from "@/lib/utils/passageActivity";
 import SelectionPopover from "./SelectionPopover";
 import type {
+  PassageActivitySegment,
   VotingBoardProps,
   SelectedText,
   SelectionPhase,
@@ -19,6 +29,15 @@ const LINKED_PASSAGE_CLASS =
 
 const RETAINED_PASSAGE_CLASS =
   "bg-[#52b274]/20 text-foreground rounded-sm box-decoration-clone px-0.5";
+
+/**
+ * Passages with existing votes, quotes or comments (#548): a light tint plus a
+ * dotted underline and a small count, so colour isn't the only signal. The
+ * count is CSS generated content, so it never becomes part of the selectable
+ * text and can't shift the offsets of a new selection.
+ */
+const ACTIVITY_PASSAGE_CLASS =
+  "bg-[#52b274]/10 text-inherit rounded-sm box-decoration-clone cursor-pointer underline decoration-dotted decoration-2 decoration-[#2f7a4c] underline-offset-4 transition-colors hover:bg-[#52b274]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7a4c] dark:decoration-[#7fdc9c]/80 dark:focus-visible:ring-[#7fdc9c] after:ml-0.5 after:align-super after:text-[0.65em] after:font-semibold after:text-[#2f6f4a] after:content-[attr(data-count)] dark:after:text-[#7fdc9c]";
 
 const TOUCH_MEDIA_QUERY = "(hover: none) and (pointer: coarse)";
 
@@ -67,6 +86,42 @@ function RetainedPassageMark({
   );
 }
 
+function makeActivityPassageMark(segments: PassageActivitySegment[]) {
+  return function ActivityPassageMark({
+    children,
+    className,
+    highlightIndex = 0,
+  }: {
+    children?: React.ReactNode;
+    className?: string;
+    highlightIndex?: number;
+  }) {
+    const segment = segments[highlightIndex];
+    const summary = segment ? describePassageActivity(segment) : "";
+    return (
+      <mark
+        data-passage-activity="true"
+        data-activity-index={highlightIndex}
+        data-count={segment ? passageActivityTotal(segment) : undefined}
+        data-testid="passage-activity"
+        className={cn(className, ACTIVITY_PASSAGE_CLASS)}
+        role="button"
+        tabIndex={0}
+        aria-label={`${children ? String(children) : "Passage"}: ${summary}. Show in Discussion`}
+        title={`${summary}. Click to see them in Discussion.`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.currentTarget.click();
+          }
+        }}
+      >
+        {children}
+      </mark>
+    );
+  };
+}
+
 function SelectionPopupContent({ render, selection, dismiss }: SelectionPopupContentProps) {
   return <>{render(selection, { dismiss })}</>;
 }
@@ -92,6 +147,8 @@ export default function VotingBoard({
   style,
   focusedComment,
   onHighlightClick,
+  activity = [],
+  onActivityClick,
 }: VotingBoardProps) {
   void votes;
   const [phase, setPhase] = useState<SelectionPhase>("idle");
@@ -575,15 +632,33 @@ export default function VotingBoard({
     }
   }, []);
 
+  const ActivityPassageMark = useMemo(() => makeActivityPassageMark(activity), [activity]);
+  const findActivityChunks = useCallback(
+    () => activity.map((segment) => ({ start: segment.start, end: segment.end })),
+    [activity]
+  );
+
   const handlePassageClick = useCallback(
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest('[data-linked-passage="true"]')) {
         e.preventDefault();
         onHighlightClick?.();
+        return;
+      }
+      const activityMark = target.closest<HTMLElement>('[data-passage-activity="true"]');
+      if (activityMark && onActivityClick) {
+        // Finishing a text selection over a marked passage shouldn't open Discussion.
+        const sel = typeof window !== "undefined" ? window.getSelection() : null;
+        if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+        const segment = activity[Number(activityMark.dataset.activityIndex)];
+        if (segment) {
+          e.preventDefault();
+          onActivityClick(segment);
+        }
       }
     },
-    [onHighlightClick]
+    [activity, onActivityClick, onHighlightClick]
   );
 
   const resolveAnchorRect = useCallback((): DOMRect | null => {
@@ -648,6 +723,21 @@ export default function VotingBoard({
             textToHighlight={content}
             searchWords={[]}
             findChunks={findChunksAtBeginningOfWords}
+            autoEscape
+            onContextMenu={disableContextMenu}
+          />
+        );
+      }
+
+      if (activity.length > 0) {
+        return (
+          <Highlighter
+            style={{ whiteSpace: "pre-line" }}
+            highlightClassName={ACTIVITY_PASSAGE_CLASS}
+            highlightTag={ActivityPassageMark}
+            textToHighlight={content}
+            searchWords={[]}
+            findChunks={findActivityChunks}
             autoEscape
             onContextMenu={disableContextMenu}
           />

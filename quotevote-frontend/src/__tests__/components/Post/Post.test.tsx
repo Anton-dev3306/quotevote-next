@@ -25,6 +25,7 @@ jest.mock("next/navigation", () => ({
 
 // Mock Zustand store
 const mockSetSnackbar = jest.fn();
+const mockSetLinkedPassage = jest.fn();
 const mockUiState = {
   linkedPassage: null as {
     actionId: string;
@@ -35,10 +36,15 @@ const mockUiState = {
 };
 jest.mock("@/store", () => ({
   useAppStore: (
-    selector?: (state: { ui: typeof mockUiState; setSnackbar: jest.Mock }) => unknown
+    selector?: (state: {
+      ui: typeof mockUiState;
+      setSnackbar: jest.Mock;
+      setLinkedPassage: jest.Mock;
+    }) => unknown
   ) => {
     const state = {
       setSnackbar: mockSetSnackbar,
+      setLinkedPassage: mockSetLinkedPassage,
       ui: mockUiState,
     };
     return selector ? selector(state) : state;
@@ -64,12 +70,32 @@ jest.mock("@apollo/client/react", () => ({
 // Stub heavy child components so the Post shell renders in jsdom
 jest.mock("@/components/VotingComponents/VotingBoard", () => ({
   __esModule: true,
-  default: ({ content, onHighlightClick }: { content: string; onHighlightClick?: () => void }) => (
-    <div data-testid="voting-board">
+  default: ({
+    content,
+    onHighlightClick,
+    activity = [],
+    onActivityClick,
+  }: {
+    content: string;
+    onHighlightClick?: () => void;
+    activity?: Array<{ start: number; end: number; actionIds: string[] }>;
+    onActivityClick?: (segment: { start: number; end: number; actionIds: string[] }) => void;
+  }) => (
+    <div data-testid="voting-board" data-activity={JSON.stringify(activity)}>
       {content}
       <button type="button" data-testid="linked-passage" onClick={() => onHighlightClick?.()}>
         highlight
       </button>
+      {activity.map((segment) => (
+        <button
+          key={segment.start}
+          type="button"
+          data-testid="activity-passage"
+          onClick={() => onActivityClick?.(segment)}
+        >
+          activity
+        </button>
+      ))}
     </div>
   ),
 }));
@@ -265,6 +291,64 @@ describe("Post Component", () => {
         <Post {...mockProps} onActivateLinkedComment={onActivateLinkedComment} />
       );
       fireEvent.click(getByTestId("linked-passage"));
+      expect(onActivateLinkedComment).toHaveBeenCalledWith("c1");
+    });
+  });
+
+  describe("Passage activity (#548)", () => {
+    const postWithPassageActivity = {
+      ...mockPost,
+      votes: [
+        { _id: "v1", startWordIndex: 0, endWordIndex: 4, type: "up", created: "1700000000000" },
+      ],
+      comments: [
+        {
+          _id: "c1",
+          startWordIndex: 2,
+          endWordIndex: 6,
+          created: "1700000100000",
+          userId: "user2",
+        },
+      ],
+    };
+
+    it("passes passages with votes or comments to the board and explains the marks", () => {
+      const { getByTestId } = render(<Post {...mockProps} post={postWithPassageActivity} />);
+      const activity = JSON.parse(getByTestId("voting-board").dataset.activity ?? "[]");
+      expect(activity).toEqual([
+        expect.objectContaining({
+          start: 0,
+          end: 6,
+          upvotes: 1,
+          comments: 1,
+          actionIds: ["c1", "v1"],
+        }),
+      ]);
+      expect(getByTestId("passage-activity-hint")).toHaveTextContent(
+        "Underlined passages already have votes or comments."
+      );
+    });
+
+    it("hides the hint when no passage has activity", () => {
+      const { queryByTestId } = render(<Post {...mockProps} />);
+      expect(queryByTestId("passage-activity-hint")).not.toBeInTheDocument();
+    });
+
+    it("links the passage and opens its newest activity when a mark is chosen", () => {
+      const onActivateLinkedComment = jest.fn();
+      const { getByTestId } = render(
+        <Post
+          {...mockProps}
+          post={postWithPassageActivity}
+          onActivateLinkedComment={onActivateLinkedComment}
+        />
+      );
+      fireEvent.click(getByTestId("activity-passage"));
+      expect(mockSetLinkedPassage).toHaveBeenCalledWith({
+        actionId: "c1",
+        startWordIndex: 0,
+        endWordIndex: 6,
+      });
       expect(onActivateLinkedComment).toHaveBeenCalledWith("c1");
     });
   });
