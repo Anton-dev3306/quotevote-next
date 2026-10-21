@@ -9,10 +9,23 @@
  * - RC1-007: Multi-select activity filters, union filtering, All reset
  */
 
-import { render, screen, within, act, waitFor } from '../../utils/test-utils';
+import { renderToString } from 'react-dom/server.node';
+import { render, screen, within, act, waitFor, resetStore } from '../../utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import { ProfileView } from '../../../components/Profile/ProfileView';
+import { useAppStore } from '@/store';
 import type { ProfileUser } from '@/types/profile';
+
+const mockOpenAuthModal = jest.fn();
+jest.mock('@/context/AuthModalContext', () => ({
+  ...jest.requireActual('@/context/AuthModalContext'),
+  useAuthModal: () => ({ openAuthModal: mockOpenAuthModal }),
+}));
+
+/** Activity is for members (#606), so most tests run signed in. */
+function signIn() {
+  useAppStore.setState((s) => ({ user: { ...s.user, data: { _id: 'viewer-id', username: 'viewer' } } }));
+}
 
 // Mock child components
 jest.mock('../../../components/Profile/ProfileHeader', () => ({
@@ -77,6 +90,13 @@ const mockProfileUser: ProfileUser = {
 };
 
 describe('ProfileView', () => {
+  beforeEach(() => {
+    resetStore();
+    localStorage.clear();
+    mockOpenAuthModal.mockClear();
+    signIn();
+  });
+
   describe('Loading State', () => {
     it('renders loading spinner when loading', () => {
       render(<ProfileView loading={true} />);
@@ -429,6 +449,55 @@ describe('ProfileView', () => {
       await user.click(screen.getByRole('button', { name: 'Clear' }));
       expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
       expect(voted).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  describe('#606: signed-out visitors', () => {
+    beforeEach(() => {
+      resetStore();
+    });
+
+    it('asks a guest to sign in instead of loading activity that would fail', () => {
+      render(<ProfileView profileUser={mockProfileUser} />);
+      expect(
+        screen.getByRole('heading', { name: "Sign in to see Test User's activity" })
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('paginated-activity-list')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('profile-activity-filters')).not.toBeInTheDocument();
+      expect(screen.getByTestId('profile-header')).toBeInTheDocument();
+      expect(screen.getByTestId('reputation-display')).toBeInTheDocument();
+    });
+
+    it('opens the login dialog from Sign in and links to the invite request', async () => {
+      render(<ProfileView profileUser={mockProfileUser} />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }));
+      expect(mockOpenAuthModal).toHaveBeenCalledWith({ view: 'login' });
+      expect(screen.getByRole('link', { name: 'Request an invite' })).toHaveAttribute(
+        'href',
+        '/auths/request-access'
+      );
+    });
+
+    it('falls back to the username when the person has no name', () => {
+      render(<ProfileView profileUser={{ ...mockProfileUser, name: undefined }} />);
+      expect(
+        screen.getByRole('heading', { name: "Sign in to see testuser's activity" })
+      ).toBeInTheDocument();
+    });
+
+    it('shows the activity once the visitor signs in', () => {
+      render(<ProfileView profileUser={mockProfileUser} />);
+      act(() => signIn());
+      expect(screen.getByTestId('paginated-activity-list')).toBeInTheDocument();
+      expect(screen.queryByTestId('activity-signin')).not.toBeInTheDocument();
+    });
+
+    it('renders a neutral loading state on the server, where the session is unknown', () => {
+      signIn();
+      const html = renderToString(<ProfileView profileUser={mockProfileUser} />);
+      expect(html).toContain('Loading activity');
+      expect(html).not.toContain('Sign in to see');
+      expect(html).not.toContain('paginated-activity-list');
     });
   });
 });

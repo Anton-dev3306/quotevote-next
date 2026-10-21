@@ -291,7 +291,7 @@ export function PaginatedActivityList({
           type="button"
           variant="outline"
           onClick={() => onClearFilters()}
-          className="mt-2 focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+          className="mt-2 focus-visible:ring-2 focus-visible:ring-[#2f7a4c] focus-visible:ring-offset-2 focus-visible:ring-offset-card dark:focus-visible:ring-[#7fdc9c]"
         >
           Show all activity
         </Button>
@@ -318,7 +318,7 @@ export function PaginatedActivityList({
           variant="outline"
           // Call with no arguments: passing the click event would reach refetch as variables.
           onClick={() => onRetry()}
-          className="mt-2 focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+          className="mt-2 focus-visible:ring-2 focus-visible:ring-[#2f7a4c] focus-visible:ring-offset-2 focus-visible:ring-offset-card dark:focus-visible:ring-[#7fdc9c]"
         >
           <RotateCw className="size-4" aria-hidden="true" />
           Try again

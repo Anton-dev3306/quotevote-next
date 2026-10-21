@@ -124,6 +124,12 @@ export interface SendInviteDialogProps {
   onSuccess?: () => void;
 }
 
+/** Props for the sign-in message that replaces profile activity for guests (#606). */
+export interface ProfileActivitySignInProps {
+  /** The profile owner's name, or username when there's no name. */
+  displayName: string;
+}
+
 export interface ProfileViewProps {
   handleActivityEvent?: (event: unknown, newActivityEvent: string[]) => void;
   handleSelectAll?: (event: unknown, newSelectAll: string[]) => void;

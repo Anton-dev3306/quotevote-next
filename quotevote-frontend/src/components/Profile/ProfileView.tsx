@@ -9,7 +9,11 @@ import { ReputationDisplay } from './ReputationDisplay';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Card, CardContent } from '@/components/ui/card';
 import { PaginatedActivityList } from '@/components/Activity/PaginatedActivityList';
+import { ProfileActivitySignIn } from './ProfileActivitySignIn';
+import { useHasMounted } from '@/hooks/useMediaQuery';
+import { isAuthenticated } from '@/lib/utils/auth';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/store';
 
 export type ProfileActivityType = 'POSTED' | 'VOTED' | 'COMMENTED' | 'QUOTED';
 
@@ -42,7 +46,7 @@ export const ALL_ACTIVITY_TYPES: ProfileActivityType[] = [
 const NO_ACTIVITY_FILTER: ProfileActivityType[] = [];
 
 const FILTER_CHIP_CLASS =
-  'inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] focus-visible:ring-offset-2 focus-visible:ring-offset-card';
+  'inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7a4c] focus-visible:ring-offset-2 focus-visible:ring-offset-card dark:focus-visible:ring-[#7fdc9c]';
 const FILTER_CHIP_ACTIVE_CLASS =
   'border-[#2f7a4c] bg-[#2f7a4c]/10 text-[#2f6f4a] dark:border-[#7fdc9c] dark:bg-[#7fdc9c]/10 dark:text-[#7fdc9c]';
 const FILTER_CHIP_IDLE_CLASS =
@@ -54,6 +58,11 @@ export function ProfileView({
   errorMessage,
 }: ProfileViewProps) {
   const [selectedFilters, setSelectedFilters] = useState<ProfileActivityType[]>([]);
+  // The live API only returns activity to members (#606). The session lives in the
+  // browser, so decide after mount to keep the server and client HTML the same.
+  const hasMounted = useHasMounted();
+  const sessionUserId = useAppStore((state) => state.user.data._id || state.user.data.id);
+  const signedIn = hasMounted && (Boolean(sessionUserId) || isAuthenticated());
 
   const handleSelectAll = useCallback(() => {
     setSelectedFilters([]);
@@ -117,77 +126,92 @@ export function ProfileView({
       <ProfileHeader profileUser={profileUser} />
 
       <div className="w-full mt-3">
-        {/* A filter, not tabs (#536): labelled chips that can be combined. */}
-        <div
-          role="group"
-          aria-labelledby="profile-activity-filter-label"
-          data-testid="profile-activity-filters"
-          className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5"
-        >
-          <span
-            id="profile-activity-filter-label"
-            className="mr-1 inline-flex items-center gap-1.5 text-sm font-medium text-foreground/80"
+        {!hasMounted ? (
+          <div
+            role="status"
+            aria-busy="true"
+            data-testid="activity-loading"
+            className="flex items-center justify-center p-8 text-sm text-foreground/75"
           >
-            <ListFilter className="size-4" aria-hidden="true" />
-            Show
-          </span>
-          <button
-            type="button"
-            aria-pressed={isAllActive}
-            data-state={isAllActive ? 'active' : 'inactive'}
-            onClick={handleSelectAll}
-            className={cn(FILTER_CHIP_CLASS, isAllActive ? FILTER_CHIP_ACTIVE_CLASS : FILTER_CHIP_IDLE_CLASS)}
+            Loading activity…
+          </div>
+        ) : !signedIn ? (
+          <ProfileActivitySignIn displayName={profileUser.name || profileUser.username} />
+        ) : (
+          <>
+          {/* A filter, not tabs (#536): labelled chips that can be combined. */}
+          <div
+            role="group"
+            aria-labelledby="profile-activity-filter-label"
+            data-testid="profile-activity-filters"
+            className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5"
           >
-            {isAllActive && <Check className="size-3.5" aria-hidden="true" />}
-            All
-          </button>
-
-          {ACTIVITY_FILTERS.map(({ id, label }) => {
-            const isActive = !isAllActive && selectedFilters.includes(id);
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={isActive}
-                data-state={isActive ? 'active' : 'inactive'}
-                onClick={() => handleToggleFilter(id)}
-                className={cn(FILTER_CHIP_CLASS, isActive ? FILTER_CHIP_ACTIVE_CLASS : FILTER_CHIP_IDLE_CLASS)}
-              >
-                {isActive ? (
-                  <Check className="size-3.5" aria-hidden="true" />
-                ) : (
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: ACTIVITY_FILTER_DOT_COLORS[id] }}
-                    aria-hidden="true"
-                  />
-                )}
-                {label}
-              </button>
-            );
-          })}
-
-          {!isAllActive && (
+            <span
+              id="profile-activity-filter-label"
+              className="mr-1 inline-flex items-center gap-1.5 text-sm font-medium text-foreground/80"
+            >
+              <ListFilter className="size-4" aria-hidden="true" />
+              Show
+            </span>
             <button
               type="button"
+              aria-pressed={isAllActive}
+              data-state={isAllActive ? 'active' : 'inactive'}
               onClick={handleSelectAll}
-              className="ml-auto inline-flex min-h-8 items-center rounded-md px-2 text-sm font-medium text-[#2f6f4a] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#52b274] dark:text-[#7fdc9c]"
+              className={cn(FILTER_CHIP_CLASS, isAllActive ? FILTER_CHIP_ACTIVE_CLASS : FILTER_CHIP_IDLE_CLASS)}
             >
-              Clear
+              {isAllActive && <Check className="size-3.5" aria-hidden="true" />}
+              All
             </button>
-          )}
-        </div>
 
-        {/* Content Section */}
-        <div className="mt-4" data-testid="profile-activity-section">
-          <PaginatedActivityList
-            userId={profileUser._id}
-            activityEvent={activityEvent}
-            onClearFilters={isAllActive ? undefined : handleSelectAll}
-            defaultPageSize={15}
-            maxVisiblePages={5}
-          />
-        </div>
+            {ACTIVITY_FILTERS.map(({ id, label }) => {
+              const isActive = !isAllActive && selectedFilters.includes(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={isActive}
+                  data-state={isActive ? 'active' : 'inactive'}
+                  onClick={() => handleToggleFilter(id)}
+                  className={cn(FILTER_CHIP_CLASS, isActive ? FILTER_CHIP_ACTIVE_CLASS : FILTER_CHIP_IDLE_CLASS)}
+                >
+                  {isActive ? (
+                    <Check className="size-3.5" aria-hidden="true" />
+                  ) : (
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: ACTIVITY_FILTER_DOT_COLORS[id] }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {label}
+                </button>
+              );
+            })}
+
+            {!isAllActive && (
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="ml-auto inline-flex min-h-8 items-center rounded-md px-2 text-sm font-medium text-[#2f6f4a] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7a4c] dark:text-[#7fdc9c] dark:focus-visible:ring-[#7fdc9c]"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Content Section */}
+          <div className="mt-4" data-testid="profile-activity-section">
+            <PaginatedActivityList
+              userId={profileUser._id}
+              activityEvent={activityEvent}
+              onClearFilters={isAllActive ? undefined : handleSelectAll}
+              defaultPageSize={15}
+              maxVisiblePages={5}
+            />
+          </div>
+          </>
+        )}
 
         {profileUser.reputation ? (
           <div className="mt-4" data-testid="profile-reputation-section">

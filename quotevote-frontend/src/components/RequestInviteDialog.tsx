@@ -30,7 +30,21 @@ import { GET_CHECK_DUPLICATE_EMAIL } from '@/graphql/queries';
 import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema';
 import { loginUser } from '@/lib/auth';
 import { useAppStore } from '@/store/useAppStore';
+import {
+  FOCUS_RING_CLASS,
+  FORM_FIELD_CLASS,
+  FORM_ERROR_TEXT_CLASS,
+  PRIMARY_ACTION_CLASS,
+} from '@/lib/constants/formControls';
+import { cn } from '@/lib/utils';
 import type { RequestInviteDialogProps } from '@/types/components';
+
+// White on the brand green is 2.6:1; these keep text, links and focus readable.
+const LINK_CLASS = cn(
+  'rounded-sm font-medium text-[#2f6f4a] underline-offset-2 hover:underline dark:text-[#7fdc9c]',
+  FOCUS_RING_CLASS
+);
+const PRIMARY_BUTTON_CLASS = cn('w-full', PRIMARY_ACTION_CLASS, FOCUS_RING_CLASS);
 
 type PanelView = 'invite' | 'login';
 
@@ -171,7 +185,7 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
         ) : (
           <div className="flex flex-col space-y-4">
             <DialogHeader>
-              <DialogTitle className="text-center text-base font-medium text-foreground leading-relaxed">
+              <DialogTitle className="text-center text-base! font-medium! leading-relaxed! text-foreground">
                 You need an account to contribute. Viewing is public, but
                 posting, voting, and quoting require an invite.
               </DialogTitle>
@@ -180,23 +194,29 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
             <div className="flex rounded-lg border border-border p-1 gap-1">
               <button
                 type="button"
+                aria-pressed={panel === 'invite'}
                 onClick={() => { setPanel('invite'); setError(''); }}
-                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                className={cn(
+                  'min-h-9 flex-1 rounded-md py-2 text-sm font-medium transition-colors',
+                  FOCUS_RING_CLASS,
                   panel === 'invite'
-                    ? 'bg-[#52b274] text-white'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                    ? 'bg-[#2f7a4c] text-white'
+                    : 'text-foreground/75 hover:bg-muted hover:text-foreground'
+                )}
               >
                 Request invite
               </button>
               <button
                 type="button"
+                aria-pressed={panel === 'login'}
                 onClick={() => { setPanel('login'); setError(''); }}
-                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                className={cn(
+                  'min-h-9 flex-1 rounded-md py-2 text-sm font-medium transition-colors',
+                  FOCUS_RING_CLASS,
                   panel === 'login'
-                    ? 'bg-[#52b274] text-white'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                    ? 'bg-[#2f7a4c] text-white'
+                    : 'text-foreground/75 hover:bg-muted hover:text-foreground'
+                )}
               >
                 Log in
               </button>
@@ -212,6 +232,8 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
                     id="invite-email"
                     type="email"
                     placeholder="Enter your email address"
+                    autoComplete="email"
+                    className={FORM_FIELD_CLASS}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleInviteSubmit()}
@@ -221,7 +243,7 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
                 <div className="text-center py-1">
                   <Link
                     href="/auths/request-access#mission"
-                    className="text-[#52b274] no-underline text-sm font-medium hover:underline"
+                    className={cn(LINK_CLASS, 'text-sm')}
                   >
                     Learn more about our mission
                   </Link>
@@ -230,19 +252,28 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
                 <Button
                   onClick={handleInviteSubmit}
                   disabled={loading}
-                  className="w-full bg-[#52b274] text-white hover:bg-[#4a9e63]"
+                  className={PRIMARY_BUTTON_CLASS}
                 >
                   {loading ? 'Submitting...' : 'Request Invite'}
                 </Button>
               </>
             ) : (
-              <>
+              <form
+                className="flex flex-col space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleLoginSubmit();
+                }}
+              >
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="login-username">Username or email</Label>
                     <Input
                       id="login-username"
                       autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      className={FORM_FIELD_CLASS}
                       value={loginUsername}
                       onChange={(e) => setLoginUsername(e.target.value)}
                     />
@@ -253,18 +284,14 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
                       id="login-password"
                       type="password"
                       autoComplete="current-password"
+                      className={FORM_FIELD_CLASS}
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleLoginSubmit()}
                     />
                   </div>
                 </div>
 
-                <Button
-                  onClick={handleLoginSubmit}
-                  disabled={loginLoading}
-                  className="w-full bg-[#52b274] text-white hover:bg-[#4a9e63]"
-                >
+                <Button type="submit" disabled={loginLoading} className={PRIMARY_BUTTON_CLASS}>
                   {loginLoading ? (
                     <>
                       <Loader2 className="mr-2 size-4 animate-spin" />
@@ -277,31 +304,34 @@ export function RequestInviteDialog({ open, onClose, view = 'invite' }: RequestI
 
                 <p className="text-center text-xs text-muted-foreground">
                   Need a password reset or magic link?{' '}
-                  <Link href="/auths/forgot-password" className="text-[#52b274] font-medium hover:underline">
+                  <Link href="/auths/forgot-password" className={LINK_CLASS}>
                     Forgot password
                   </Link>
                 </p>
-              </>
+              </form>
             )}
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                <p className="text-red-800 text-sm font-medium m-0">{error}</p>
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 p-3 text-center dark:border-red-900/60 dark:bg-red-950/40"
+              >
+                <p className={cn('m-0 text-sm font-medium', FORM_ERROR_TEXT_CLASS)}>{error}</p>
               </div>
             )}
 
             {panel === 'invite' && (
-              <p className="text-center text-sm text-gray-600">
+              <p className="text-center text-sm text-foreground/75">
                 Already have an account?{' '}
                 <button
                   type="button"
                   onClick={() => { setPanel('login'); setError(''); }}
-                  className="text-[#52b274] font-medium hover:underline bg-transparent border-0 cursor-pointer p-0"
+                  className={cn(LINK_CLASS, 'cursor-pointer border-0 bg-transparent p-0')}
                 >
                   Log in
                 </button>
                 {' '}or{' '}
-                <Link href={loginPageUrl} className="text-[#52b274] font-medium hover:underline">
+                <Link href={loginPageUrl} className={LINK_CLASS}>
                   open full login page
                 </Link>
               </p>
