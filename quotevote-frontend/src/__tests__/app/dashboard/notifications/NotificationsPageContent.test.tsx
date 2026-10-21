@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { renderToString } from 'react-dom/server.node';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 // Mock Apollo hooks
 const mockRefetch = jest.fn();
@@ -66,6 +67,7 @@ const mockNotifications = [
 
 describe('NotificationsPageContent', () => {
   beforeEach(() => {
+    mockRefetch.mockClear();
     mockLoading = false;
     mockData = null;
     mockError = null;
@@ -99,5 +101,32 @@ describe('NotificationsPageContent', () => {
     mockData = { notifications: [] };
     render(<NotificationsPageContent />);
     expect(screen.getByText(/you're all caught up/i)).toBeInTheDocument();
+  });
+
+  // #605: the server doesn't know who is signed in, so its HTML must match the
+  // browser's first render whatever the query result is.
+  it('renders the loading state on the server even when notifications are cached', () => {
+    mockData = { notifications: mockNotifications };
+    const html = renderToString(<NotificationsPageContent />);
+    expect(html).toContain('Loading notifications');
+    expect(html).not.toContain('started following you');
+    expect(html).not.toMatch(/all caught up/i);
+    expect(html).not.toMatch(/1 notification/);
+  });
+
+  it('keeps loading until the first fetch is back, instead of flashing the empty state', () => {
+    mockData = null;
+    render(<NotificationsPageContent />);
+    expect(screen.getByTestId('notifications-loading')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText(/you're all caught up/i)).not.toBeInTheDocument();
+  });
+
+  it('shows an error with Try again instead of "all caught up" when loading fails', () => {
+    mockError = new Error('Network error');
+    render(<NotificationsPageContent />);
+    expect(screen.getByRole('alert')).toHaveTextContent("We couldn't load your notifications.");
+    expect(screen.queryByText(/you're all caught up/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mockRefetch).toHaveBeenCalledWith();
   });
 });
