@@ -103,7 +103,7 @@ test.describe("Invite Request CTA (E2E-AUTH-005)", () => {
     // 4. Confirmation message appears
     const successMessage = page.getByTestId("invite-success-message");
     await expect(successMessage).toBeVisible();
-    await expect(successMessage).toContainText(/thank you for joining us/i);
+    await expect(successMessage).toContainText(/request received/i);
 
     // 5. Visitor remains logged out
     const cookies = await page.context().cookies();
