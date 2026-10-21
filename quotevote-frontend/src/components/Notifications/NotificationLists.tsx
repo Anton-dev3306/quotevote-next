@@ -9,6 +9,8 @@ import { DELETE_NOTIFICATION } from '@/graphql/mutations';
 import { GET_NOTIFICATIONS } from '@/graphql/queries';
 import { useAppStore } from '@/store';
 import useGuestGuard from '@/hooks/useGuestGuard';
+import { useHasMounted } from '@/hooks/useMediaQuery';
+import { parseApiDate } from '@/lib/utils/apiDate';
 import { toAppPostUrl } from '@/lib/utils/sanitizeUrl';
 import type { Notification } from '@/types/notification';
 import { cn } from '@/lib/utils';
@@ -79,7 +81,7 @@ const stringLimit = (str: string, limit: number): string => {
   return `${str.slice(0, limit)}...`;
 };
 
-const formatTimeAgo = (created: string | number | Date): string => {
+const formatTimeAgo = (created: Date): string => {
   return moment(created).calendar(null, {
     sameDay: '[Today at] h:mm A',
     lastDay: '[Yesterday at] h:mm A',
@@ -97,6 +99,8 @@ export function NotificationLists({
   const client = useApolloClient();
   const ensureAuth = useGuestGuard();
   const setSelectedPost = useAppStore((state) => state.setSelectedPost);
+  // Times read in the viewer's time zone, which the server doesn't know (#605).
+  const hasMounted = useHasMounted();
 
   const [removeNotification] = useMutation(DELETE_NOTIFICATION);
 
@@ -167,71 +171,67 @@ export function NotificationLists({
           const actionText = getNotificationActionText(notification.notificationType);
           const icon = getNotificationIcon(notification.notificationType);
           const displayName = notification.userBy.name || notification.userBy.username;
+          const created = parseApiDate(notification.created);
 
           return (
             <div
               key={notification._id}
-              className="bg-card rounded-lg p-4 border border-border hover:bg-accent/50 transition-colors cursor-pointer group focus-visible:ring-2 focus-visible:ring-primary"
-              role="button"
-              tabIndex={0}
-              onClick={() =>
-                handleNotificationClick(
-                  notification.notificationType,
-                  notification.userBy,
-                  notification.post
-                )
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
+              className="group flex items-start gap-1 rounded-lg border border-border bg-card transition-colors hover:bg-accent/50"
+            >
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-lg p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f7a4c] dark:focus-visible:ring-[#7fdc9c]"
+                onClick={() =>
                   handleNotificationClick(
                     notification.notificationType,
                     notification.userBy,
                     notification.post
-                  );
+                  )
                 }
-              }}
-            >
-              <div className="flex items-start gap-3">
+              >
                 {icon && (
-                  <div className="flex-shrink-0 mt-0.5">
+                  <span className="flex-shrink-0 mt-0.5" aria-hidden>
                     {icon}
-                  </div>
+                  </span>
                 )}
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground">
+                <span className="block flex-1 min-w-0">
+                  <span className="block text-sm text-foreground">
                     <span className="font-semibold">{displayName}</span>{' '}
                     <span className="text-muted-foreground">{actionText}</span>
-                  </p>
+                  </span>
                   {notification.notificationType !== 'FOLLOW' && notification.label && (
-                    <p className="text-sm text-muted-foreground mt-1 truncate">
+                    <span className="block text-sm text-muted-foreground mt-1 truncate">
                       &ldquo;{stringLimit(notification.label, pageView ? 1000 : 50)}&rdquo;
-                    </p>
+                    </span>
                   )}
                   {notification.post?.deleted && (
-                    <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    <span className="block mt-1 text-xs font-medium text-muted-foreground">
                       This post has been deleted
-                    </p>
+                    </span>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formatTimeAgo(notification.created)}
-                  </p>
-                </div>
+                  {created && (
+                    <time
+                      dateTime={created.toISOString()}
+                      className="block min-h-4 text-xs text-muted-foreground mt-1"
+                      data-testid="notification-time"
+                    >
+                      {hasMounted ? formatTimeAgo(created) : null}
+                    </time>
+                  )}
+                </span>
+              </button>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(notification._id);
-                  }}
-                  aria-label="Delete notification"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="mr-2 mt-3 size-8 flex-shrink-0 text-muted-foreground transition-opacity hover:text-foreground focus-visible:ring-[#2f7a4c] dark:focus-visible:ring-[#7fdc9c] [@media(hover:hover)]:opacity-0 group-hover:opacity-100! group-focus-within:opacity-100! focus-visible:opacity-100!"
+                onClick={() => handleDelete(notification._id)}
+                aria-label={`Delete notification from ${displayName}`}
+              >
+                <X className="w-4 h-4" aria-hidden />
+              </Button>
             </div>
           );
         })}

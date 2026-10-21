@@ -24,6 +24,7 @@ jest.mock("@/hooks/useGuestGuard", () => ({
 let mockIsMobile = false;
 jest.mock("@/hooks/useMediaQuery", () => ({
   useMediaQuery: () => mockIsMobile,
+  useHasMounted: () => true,
 }));
 
 const userBy = {

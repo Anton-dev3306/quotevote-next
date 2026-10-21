@@ -3,7 +3,9 @@
  * panel can close itself after a notification is opened.
  */
 
-import { render, screen } from "@/__tests__/utils/test-utils";
+import { renderToString } from "react-dom/server.node";
+import { ApolloProvider } from "@apollo/client/react";
+import { createMockApolloClient, render, screen, within } from "@/__tests__/utils/test-utils";
 import userEvent from "@testing-library/user-event";
 import { NotificationLists } from "@/components/Notifications/NotificationLists";
 import type { Notification } from "@/types/notification";
@@ -92,5 +94,34 @@ describe("NotificationLists (#532)", () => {
     const many = Array.from({ length: 6 }, (_, i) => ({ ...commentOnLivePost, _id: `n-${i}` }));
     const { container } = render(<NotificationLists notifications={many} pageView />);
     expect(container.querySelector(".max-h-\\[75vh\\]")).toBeNull();
+  });
+
+  it("keeps Delete beside the row, not inside it, and names whose notification it removes", () => {
+    render(<NotificationLists notifications={[follow]} pageView />);
+    const row = screen.getByRole("button", { name: /started following you/ });
+    const del = screen.getByRole("button", { name: "Delete notification from Bob Local" });
+    expect(row).not.toContainElement(del);
+    expect(within(row).queryByRole("button")).toBeNull();
+  });
+
+  it("shows the time in a machine-readable element, reading millisecond strings too", () => {
+    const at = new Date("2026-03-01T12:00:00.000Z");
+    render(
+      <NotificationLists notifications={[{ ...follow, created: String(at.getTime()) }]} pageView />
+    );
+    const time = screen.getByTestId("notification-time");
+    expect(time.tagName).toBe("TIME");
+    expect(time).toHaveAttribute("dateTime", at.toISOString());
+    expect(time.textContent).toMatch(/2026|at/);
+  });
+
+  it("leaves the time text out of the server HTML, since it depends on the time zone (#605)", () => {
+    const html = renderToString(
+      <ApolloProvider client={createMockApolloClient()}>
+        <NotificationLists notifications={[follow]} pageView />
+      </ApolloProvider>
+    );
+    expect(html).toContain("started following you");
+    expect(html).not.toMatch(/Today at|Yesterday at/);
   });
 });
