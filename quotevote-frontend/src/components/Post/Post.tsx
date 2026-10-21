@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, lazy, Suspense } from "react";
+import { useMemo, useState, lazy, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { includes } from "lodash";
 import moment from "moment";
@@ -43,12 +43,19 @@ import { POST_ACTION_PILL_CLASS } from "@/lib/constants/postActions";
 import { VOTE_AXIS, VOTE_LABELS } from "@/lib/constants/voteAxes";
 import { cn } from "@/lib/utils";
 import { scrollActionIntoDiscussion } from "@/lib/utils/discussionSplit";
+import { buildPassageActivity } from "@/lib/utils/passageActivity";
 import { getDomain, sanitizeUrl, toAbsolutePostUrl } from "@/lib/utils/sanitizeUrl";
 import { useAppStore } from "@/store";
 import VotingBoard from "@/components/VotingComponents/VotingBoard";
 const VotingPopup = lazy(() => import("@/components/VotingComponents/VotingPopup"));
 import type { PostVote, PostProps } from "@/types/post";
-import type { SelectedText, UserVote, VoteType, VoteOption } from "@/types/voting";
+import type {
+  PassageActivitySegment,
+  SelectedText,
+  UserVote,
+  VoteType,
+  VoteOption,
+} from "@/types/voting";
 
 type VoteStateMutationPost = {
   _id: string;
@@ -70,13 +77,20 @@ export default function Post({
   const linkedPassage = useAppStore((state) => state.ui.linkedPassage);
   const mobileDiscussionOpen = useAppStore((state) => state.ui.mobileDiscussionOpen);
   const setPendingQuote = useAppStore((state) => state.setPendingQuote);
+  const setLinkedPassage = useAppStore((state) => state.setLinkedPassage);
 
-  const handleHighlightClick = () => {
-    const actionId = linkedPassage?.actionId;
-    if (!actionId) {
-      onOpenDiscussion?.();
-      return;
-    }
+  // Passages that already have votes, quotes or passage comments (#548).
+  const passageActivity = useMemo(
+    () =>
+      buildPassageActivity(post.text || "", {
+        votes: post.votes,
+        quotes: post.quotes,
+        comments: post.comments,
+      }),
+    [post.text, post.votes, post.quotes, post.comments]
+  );
+
+  const openInDiscussion = (actionId: string) => {
     onActivateLinkedComment?.(actionId);
     // Reverse-nav only when opening Discussion; tapping the highlight while
     // split-screen is already open clears the selection instead.
@@ -86,6 +100,23 @@ export default function Post({
         scrollActionIntoDiscussion(actionId, "center");
       }, 220);
     });
+  };
+
+  const handleHighlightClick = () => {
+    const actionId = linkedPassage?.actionId;
+    if (!actionId) {
+      onOpenDiscussion?.();
+      return;
+    }
+    openInDiscussion(actionId);
+  };
+
+  // A marked passage becomes the linked passage and opens its newest activity.
+  const handleActivityClick = (segment: PassageActivitySegment) => {
+    const actionId = segment.actionIds[0];
+    if (!actionId) return;
+    setLinkedPassage({ actionId, startWordIndex: segment.start, endWordIndex: segment.end });
+    openInDiscussion(actionId);
   };
 
   const { title, creator, created, _id, userId } = post;
@@ -614,6 +645,14 @@ export default function Post({
       {/* ── Post body ───────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-6 py-4">
         {/* Selectable post text + floating VotingPopup */}
+        {passageActivity.length > 0 && (
+          <p data-testid="passage-activity-hint" className="mb-2 text-xs text-foreground/70">
+            <span className="underline decoration-dotted decoration-2 decoration-[#2f7a4c] underline-offset-4 dark:decoration-[#7fdc9c]/80">
+              Underlined
+            </span>{" "}
+            passages already have votes or comments. Select one to see them in Discussion.
+          </p>
+        )}
 
         <div
           data-testid="post-detail-body"
@@ -628,6 +667,8 @@ export default function Post({
             votes={post.votes || []}
             focusedComment={linkedPassage}
             onHighlightClick={handleHighlightClick}
+            activity={passageActivity}
+            onActivityClick={handleActivityClick}
           >
             {(selection, { dismiss }) => (
               <Suspense fallback={null}>

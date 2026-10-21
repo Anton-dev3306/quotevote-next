@@ -175,6 +175,14 @@ export interface VotingBoardProps {
    * Called when the highlighted (linked) passage is tapped.
    */
   onHighlightClick?: () => void;
+  /**
+   * Passages that already have votes, quotes or comments, marked in the text (#548)
+   */
+  activity?: PassageActivitySegment[];
+  /**
+   * Called when a marked passage is clicked or activated with the keyboard
+   */
+  onActivityClick?: (segment: PassageActivitySegment) => void;
 }
 
 /**
@@ -207,4 +215,28 @@ export interface SelectionPopoverProps {
    * Child components to render inside the popover
    */
   children: React.ReactNode;
+}
+
+/**
+ * A stretch of post text with community activity on it (#548). Overlapping or
+ * touching votes, quotes and passage comments merge into one segment.
+ */
+export interface PassageActivitySegment {
+  /** Character offsets into the post text, end exclusive */
+  start: number;
+  end: number;
+  upvotes: number;
+  downvotes: number;
+  quotes: number;
+  comments: number;
+  /** Ids of the actions in this segment, newest first (matches the Discussion item ids) */
+  actionIds: string[];
+}
+
+/** Any action with a passage range: a vote, quote or comment */
+export interface PassageAction {
+  _id: string;
+  startWordIndex?: number | null;
+  endWordIndex?: number | null;
+  created?: string | null;
 }
