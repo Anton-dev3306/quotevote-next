@@ -736,6 +736,13 @@ export interface RequestAccessFormProps {
   onSuccess?: () => void;
 }
 
+export interface RequestAccessSuccessProps {
+  /**
+   * The email the request was sent for, shown so the visitor knows where to look
+   */
+  email?: string;
+}
+
 export interface RequestInviteDialogProps {
   /**
    * Whether the dialog is open

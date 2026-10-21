@@ -19,12 +19,12 @@ import { REQUEST_USER_ACCESS_MUTATION } from '@/graphql/mutations';
 import { GET_CHECK_DUPLICATE_EMAIL } from '@/graphql/queries';
 import { parseRequestAccessEmail } from '@/lib/validation/requestAccessSchema';
 import type { RequestAccessFormProps } from '@/types/components';
-import { PersonalForm } from './PersonalForm';
+import { RequestAccessSuccess } from './RequestAccessSuccess';
 
 export function RequestAccessForm({ onSuccess }: RequestAccessFormProps) {
   const [userDetails, setUserDetails] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [requestInviteSuccessful, setRequestInviteSuccessful] = useState(false);
+  const [requestedEmail, setRequestedEmail] = useState<string | null>(null);
 
   const client = useApolloClient();
   const [requestUserAccess, { loading }] = useMutation(REQUEST_USER_ACCESS_MUTATION);
@@ -55,7 +55,7 @@ export function RequestAccessForm({ onSuccess }: RequestAccessFormProps) {
       }
 
       await requestUserAccess({ variables: { requestUserAccessInput: { email } } });
-      setRequestInviteSuccessful(true);
+      setRequestedEmail(email);
       toast.success('Request submitted successfully!');
       if (onSuccess) onSuccess();
     } catch (err) {
@@ -69,8 +69,8 @@ export function RequestAccessForm({ onSuccess }: RequestAccessFormProps) {
     }
   };
 
-  if (requestInviteSuccessful) {
-    return <PersonalForm requestInviteSuccessful={requestInviteSuccessful} />;
+  if (requestedEmail) {
+    return <RequestAccessSuccess email={requestedEmail} />;
   }
 
   return (
