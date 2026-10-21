@@ -13,6 +13,12 @@
 import { render, screen, fireEvent, waitFor, act } from '@/__tests__/utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import { RequestInviteDialog } from '@/components/RequestInviteDialog';
+import { loginUser } from '@/lib/auth';
+
+jest.mock('@/lib/auth', () => ({
+  loginUser: jest.fn(),
+}));
+const mockLoginUser = loginUser as jest.MockedFunction<typeof loginUser>;
 
 // Mock Apollo Client hooks - will be set up properly below
 
@@ -404,5 +410,38 @@ describe('RequestInviteDialog', () => {
     expect(true).toBe(true);
     jest.useRealTimers();
   });
-});
 
+  describe('Log in panel', () => {
+    it('marks the selected tab for assistive tech', async () => {
+      render(<RequestInviteDialog {...defaultProps} view="login" />);
+      expect(screen.getByRole('button', { name: 'Log in' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Request invite' })).toHaveAttribute(
+        'aria-pressed',
+        'false'
+      );
+    });
+
+    it('submits with Enter from the username field too, since it is a real form', async () => {
+      mockLoginUser.mockResolvedValue({ success: false, error: 'Invalid username or password.' });
+      const user = userEvent.setup();
+      render(<RequestInviteDialog {...defaultProps} view="login" />);
+
+      await user.type(screen.getByLabelText('Password'), 'secret-pass');
+      await user.type(screen.getByLabelText('Username or email'), 'bob{Enter}');
+
+      await waitFor(() => expect(mockLoginUser).toHaveBeenCalledTimes(1));
+      expect(mockLoginUser.mock.calls[0].slice(0, 2)).toEqual(['bob', 'secret-pass']);
+      expect(await screen.findByRole('alert')).toHaveTextContent('Invalid username or password.');
+    });
+
+    it('asks for both fields before sending anything', async () => {
+      const user = userEvent.setup();
+      render(<RequestInviteDialog {...defaultProps} view="login" />);
+      await user.click(screen.getByRole('button', { name: 'Sign in' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Username and password are required.'
+      );
+      expect(mockLoginUser).not.toHaveBeenCalled();
+    });
+  });
+});
