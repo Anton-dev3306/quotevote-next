@@ -30,6 +30,9 @@ const PUBLIC_QUERIES: readonly string[] = [
   'actionReactions',
   'messageReactions',
   'user',
+  // One user's activity is public; the resolver still requires a session for the
+  // following feed (no user_id).
+  'activities',
   'getUserFollowInfo',
   'tag',
   'tags',

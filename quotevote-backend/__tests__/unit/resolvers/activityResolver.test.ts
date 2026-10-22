@@ -72,12 +72,48 @@ describe('activityResolver', () => {
   });
 
   describe('Query.activities', () => {
-    it('requires authentication', async () => {
+    it('requires authentication for the following feed (no user_id)', async () => {
       const ctx = { ...mockContext(), user: null };
 
-      const promise = activityResolver.Query.activities(null, args(), ctx);
+      const promise = activityResolver.Query.activities(null, args({ user_id: '' }), ctx);
       await expect(promise).rejects.toThrow(GraphQLError);
       await expect(promise).rejects.toMatchObject({ extensions: { code: 'UNAUTHENTICATED' } });
+      expect(ctx.prisma.activity.findMany).not.toHaveBeenCalled();
+      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("returns one user's activity to a signed-out visitor", async () => {
+      const ctx = { ...mockContext(), user: null };
+      (ctx.prisma.activity.count as jest.Mock).mockResolvedValue(1);
+      (ctx.prisma.activity.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: '60d5ec49ad414d7a8d5464b0',
+          userId: profileId,
+          postId: '60d5ec49ad414d7a8d5464b1',
+          voteId: null,
+          commentId: null,
+          quoteId: null,
+          activityType: 'POSTED',
+          content: 'posted',
+          created: new Date('2024-01-01T00:00:00Z'),
+        },
+      ]);
+
+      const result = await activityResolver.Query.activities(null, args(), ctx);
+
+      expect(ctx.prisma.activity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: profileId } })
+      );
+      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(result.entities).toHaveLength(1);
+      expect(result.pagination.total_count).toBe(1);
+    });
+
+    it('still rejects a malformed user_id from a signed-out visitor', async () => {
+      const ctx = { ...mockContext(), user: null };
+
+      const promise = activityResolver.Query.activities(null, args({ user_id: '{"$ne":null}' }), ctx);
+      await expect(promise).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
       expect(ctx.prisma.activity.findMany).not.toHaveBeenCalled();
     });
 

@@ -50,13 +50,16 @@ export const activityResolver = {
     /**
      * Paginated activity feed for a user (or the caller's following list).
      * Matches legacy getUserActivities return shape: { entities, pagination }.
+     * One user's activity is public, like their posts and profile. The following
+     * feed (no user_id) needs a signed-in viewer.
      */
     activities: async (
       _parent: unknown,
       args: ActivityQueryArgs,
       context: GraphQLContext
     ): Promise<Common.PaginatedResult<Common.Activity>> => {
-      if (!context.user?._id) {
+      const viewerId = context.user?._id;
+      if (!args.user_id && !viewerId) {
         throw new GraphQLError('Authentication required', {
           extensions: { code: 'UNAUTHENTICATED' },
         });
@@ -100,7 +103,7 @@ export const activityResolver = {
         where.userId = args.user_id;
       } else {
         const viewer = await context.prisma.user.findUnique({
-          where: { id: context.user._id.toString() },
+          where: { id: String(viewerId) },
           select: { followingIds: true },
         });
         where.userId = { in: viewer?.followingIds ?? [] };
