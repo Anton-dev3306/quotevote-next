@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql';
 import type { Prisma } from '@prisma/client';
 import { ACTIVITY_SELECT, toActivityEntity } from '~/data/resolvers/utils/activities';
+import { hydrateActivities } from '~/data/resolvers/utils/hydrateActivities';
 import { logger } from '~/data/utils/logger';
 import { ActivityEventTypeValues } from '~/data/utils/constants';
 import type * as Common from '~/types/common';
@@ -50,13 +51,16 @@ export const activityResolver = {
     /**
      * Paginated activity feed for a user (or the caller's following list).
      * Matches legacy getUserActivities return shape: { entities, pagination }.
+     * One user's activity is public, like their posts and profile. The following
+     * feed (no user_id) needs a signed-in viewer.
      */
     activities: async (
       _parent: unknown,
       args: ActivityQueryArgs,
       context: GraphQLContext
-    ): Promise<Common.PaginatedResult<Common.Activity>> => {
-      if (!context.user?._id) {
+    ): Promise<Common.PaginatedResult<Common.HydratedActivity>> => {
+      const viewerId = context.user?._id;
+      if (!args.user_id && !viewerId) {
         throw new GraphQLError('Authentication required', {
           extensions: { code: 'UNAUTHENTICATED' },
         });
@@ -100,7 +104,7 @@ export const activityResolver = {
         where.userId = args.user_id;
       } else {
         const viewer = await context.prisma.user.findUnique({
-          where: { id: context.user._id.toString() },
+          where: { id: String(viewerId) },
           select: { followingIds: true },
         });
         where.userId = { in: viewer?.followingIds ?? [] };
@@ -117,8 +121,15 @@ export const activityResolver = {
         }),
       ]);
 
+      // The schema has no Activity field resolvers, so attach the user, post and
+      // the vote, comment or quote here, in batches for the whole page.
+      const entities = await hydrateActivities(
+        context.prisma,
+        activitiesResult.map(toActivityEntity)
+      );
+
       return {
-        entities: activitiesResult.map(toActivityEntity),
+        entities,
         pagination: {
           total_count: total,
           limit,

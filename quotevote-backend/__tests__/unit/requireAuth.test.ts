@@ -108,6 +108,12 @@ describe('requireAuth', () => {
       const query = 'query { topPosts { id } }';
       expect(requireAuth(query)).toBe(false);
     });
+
+    // One user's activity is public; the resolver still guards the following feed.
+    it('should return false for "activities" query', () => {
+      const query = 'query { activities(user_id: "60d5ec49ad414d7a8d5464a1") { entities { _id } } }';
+      expect(requireAuth(query)).toBe(false);
+    });
   });
 
   describe('Protected queries (should return true)', () => {

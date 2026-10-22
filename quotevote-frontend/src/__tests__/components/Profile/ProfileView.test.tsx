@@ -22,7 +22,7 @@ jest.mock('@/context/AuthModalContext', () => ({
   useAuthModal: () => ({ openAuthModal: mockOpenAuthModal }),
 }));
 
-/** The activity list is for members (#606), so most tests run signed in. */
+/** Most tests run signed in; the guest view has its own block (#620). */
 function signIn() {
   useAppStore.setState((s) => ({ user: { ...s.user, data: { _id: 'viewer-id', username: 'viewer' } } }));
 }
@@ -48,24 +48,32 @@ jest.mock('@/components/LoadingSpinner', () => ({
   LoadingSpinner: () => <div data-testid="loading-spinner">Loading...</div>,
 }));
 
+// Set by a test to make the list report that the API is only giving a guest posts.
+let mockMembersOnly = false;
 jest.mock('@/components/Activity/PaginatedActivityList', () => ({
-  PaginatedActivityList: ({ activityEvent = [] }: { activityEvent?: string[] }) => (
-    <div
-      data-testid="paginated-activity-list"
-      data-events={activityEvent.join(',')}
-    >
-      {activityEvent.length === 0 ? 'ALL' : activityEvent.join(',')}
-    </div>
-  ),
-}));
-
-jest.mock('@/components/Post/PaginatedPostsList', () => ({
-  __esModule: true,
-  default: ({ userId, emptyMessage }: { userId?: string; emptyMessage?: string }) => (
-    <div data-testid="paginated-posts-list" data-user-id={userId}>
-      {emptyMessage}
-    </div>
-  ),
+  PaginatedActivityList: ({
+    activityEvent = [],
+    publicFallback = false,
+    onMembersOnlyChange,
+  }: {
+    activityEvent?: string[];
+    publicFallback?: boolean;
+    onMembersOnlyChange?: (membersOnly: boolean) => void;
+  }) => {
+    const { useEffect } = jest.requireActual<typeof import('react')>('react');
+    useEffect(() => {
+      onMembersOnlyChange?.(publicFallback && mockMembersOnly);
+    }, [onMembersOnlyChange, publicFallback]);
+    return (
+      <div
+        data-testid="paginated-activity-list"
+        data-events={activityEvent.join(',')}
+        data-public-fallback={String(publicFallback)}
+      >
+        {activityEvent.length === 0 ? 'ALL' : activityEvent.join(',')}
+      </div>
+    );
+  },
 }));
 
 const mockProfileUser: ProfileUser = {
@@ -461,26 +469,29 @@ describe('ProfileView', () => {
     });
   });
 
-  describe('#606: signed-out visitors', () => {
+  describe('#620: signed-out visitors see the activity list', () => {
     beforeEach(() => {
       resetStore();
+      mockMembersOnly = false;
     });
 
-    it("shows a guest the person's public posts instead of an error", () => {
+    it('gives a guest the same filters and activity list as a member, with the public fallback on', () => {
       render(<ProfileView profileUser={mockProfileUser} />);
-      expect(screen.getByRole('region', { name: 'Posts by Test User' })).toBeInTheDocument();
-      expect(screen.getByTestId('paginated-posts-list')).toHaveAttribute('data-user-id', 'user1');
-      expect(screen.getByText("Test User hasn't posted anything yet.")).toBeInTheDocument();
-      // The activity list and its filters need an account on the live API.
-      expect(screen.queryByTestId('paginated-activity-list')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('profile-activity-filters')).not.toBeInTheDocument();
-      expect(screen.getByTestId('profile-header')).toBeInTheDocument();
+      expect(screen.getByTestId('profile-activity-filters')).toBeInTheDocument();
+      expect(screen.getByTestId('paginated-activity-list')).toHaveAttribute(
+        'data-public-fallback',
+        'true'
+      );
+      // The full activity is available, so there is nothing to explain.
+      expect(screen.queryByTestId('activity-signin')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /^Sign in to see/ })).not.toBeInTheDocument();
       expect(screen.getByTestId('reputation-display')).toBeInTheDocument();
     });
 
-    it('says the rest of the activity is for members, with Sign in and Request an invite', async () => {
+    it('explains that only posts are shown while the API keeps the rest for members', async () => {
+      mockMembersOnly = true;
       render(<ProfileView profileUser={mockProfileUser} />);
-      expect(screen.getByTestId('activity-signin')).toHaveTextContent(
+      expect(await screen.findByTestId('activity-signin')).toHaveTextContent(
         "Showing Test User's posts. Sign in to see their votes, comments and quotes too."
       );
       await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }));
@@ -491,18 +502,24 @@ describe('ProfileView', () => {
       );
     });
 
-    it('falls back to the username when the person has no name', () => {
+    it('falls back to the username when the person has no name', async () => {
+      mockMembersOnly = true;
       render(<ProfileView profileUser={{ ...mockProfileUser, name: undefined }} />);
-      expect(screen.getByRole('region', { name: 'Posts by testuser' })).toBeInTheDocument();
-      expect(screen.getByTestId('activity-signin')).toHaveTextContent("Showing testuser's posts.");
+      expect(await screen.findByTestId('activity-signin')).toHaveTextContent(
+        "Showing testuser's posts."
+      );
     });
 
-    it('shows the activity once the visitor signs in', () => {
+    it('drops the note and the fallback once the visitor signs in', async () => {
+      mockMembersOnly = true;
       render(<ProfileView profileUser={mockProfileUser} />);
+      await screen.findByTestId('activity-signin');
       act(() => signIn());
-      expect(screen.getByTestId('paginated-activity-list')).toBeInTheDocument();
-      expect(screen.queryByTestId('activity-signin')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('paginated-posts-list')).not.toBeInTheDocument();
+      expect(screen.getByTestId('paginated-activity-list')).toHaveAttribute(
+        'data-public-fallback',
+        'false'
+      );
+      await waitFor(() => expect(screen.queryByTestId('activity-signin')).not.toBeInTheDocument());
     });
 
     it('renders a neutral loading state on the server, where the session is unknown', () => {
@@ -510,7 +527,6 @@ describe('ProfileView', () => {
       const html = renderToString(<ProfileView profileUser={mockProfileUser} />);
       expect(html).toContain('Loading activity');
       expect(html).not.toContain('Showing Test User');
-      expect(html).not.toContain('paginated-posts-list');
       expect(html).not.toContain('paginated-activity-list');
     });
   });

@@ -215,12 +215,15 @@ export const ActivityCard = memo(function ActivityCard({
     <Card
       data-chrome={isPosted ? 'standard-blue' : 'activity'}
       className={cn(
-        'min-w-[350px] min-h-[200px] cursor-pointer text-neutral-900',
+        'min-w-[350px] min-h-[200px] cursor-pointer',
         'focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#52b274]',
         'sm:max-w-full sm:min-w-full sm:w-full',
+        // Posted cards sit on the theme's card color, so they take its text color (dark
+        // text on the dark card was unreadable). The vote, comment and quote cards keep
+        // their light fills in both themes, so their text stays dark.
         isPosted
-          ? 'rounded-[7px] overflow-hidden bg-card border-0 shadow-none'
-          : 'rounded-md border transition-shadow hover:shadow-md'
+          ? 'rounded-[7px] overflow-hidden bg-card text-card-foreground border-0 shadow-none'
+          : 'rounded-md border text-neutral-900 transition-shadow hover:shadow-md'
       )}
       style={{
         backgroundColor: isPosted ? undefined : cardColor || '#FFFFFF',

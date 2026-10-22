@@ -9,7 +9,6 @@ import { ReputationDisplay } from './ReputationDisplay';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Card, CardContent } from '@/components/ui/card';
 import { PaginatedActivityList } from '@/components/Activity/PaginatedActivityList';
-import PaginatedPostsList from '@/components/Post/PaginatedPostsList';
 import { ProfileActivitySignIn } from './ProfileActivitySignIn';
 import { useHasMounted } from '@/hooks/useMediaQuery';
 import { isAuthenticated } from '@/lib/utils/auth';
@@ -59,13 +58,14 @@ export function ProfileView({
   errorMessage,
 }: ProfileViewProps) {
   const [selectedFilters, setSelectedFilters] = useState<ProfileActivityType[]>([]);
-  // The live API only returns the activity list to members (#606), so guests see the
-  // public posts instead. The session lives in the browser, so decide after mount to
-  // keep the server and client HTML the same.
+  // Activity is public. While the live API still keeps the activity list for members,
+  // guests see the person's posts in the same list, with a note about the rest.
+  const [showingPostsOnly, setShowingPostsOnly] = useState(false);
+  // The session lives in the browser, so decide after mount to keep the server and
+  // client HTML the same (#606).
   const hasMounted = useHasMounted();
   const sessionUserId = useAppStore((state) => state.user.data._id || state.user.data.id);
   const signedIn = hasMounted && (Boolean(sessionUserId) || isAuthenticated());
-  const displayName = profileUser?.name || profileUser?.username || '';
 
   const handleSelectAll = useCallback(() => {
     setSelectedFilters([]);
@@ -138,26 +138,13 @@ export function ProfileView({
           >
             Loading activity…
           </div>
-        ) : !signedIn ? (
-          // Posts are public on the live API; the rest of the activity is for members.
-          <section aria-labelledby="profile-public-posts-title" data-testid="profile-public-posts">
-            <h2 id="profile-public-posts-title" className="sr-only">
-              Posts by {displayName}
-            </h2>
-            <ProfileActivitySignIn displayName={displayName} />
-            {/* The list pads its cards by 1rem; pull it out so they line up with the note. */}
-            <div className="-mx-4">
-              <PaginatedPostsList
-                userId={profileUser._id}
-                loadMoreMode
-                defaultPageSize={10}
-                emptyTitle="No posts yet"
-                emptyMessage={`${displayName} hasn't posted anything yet.`}
-              />
-            </div>
-          </section>
         ) : (
           <>
+          {!signedIn && showingPostsOnly && (
+            <div className="mb-3">
+              <ProfileActivitySignIn displayName={profileUser.name || profileUser.username} />
+            </div>
+          )}
           {/* A filter, not tabs (#536): labelled chips that can be combined. */}
           <div
             role="group"
@@ -227,6 +214,8 @@ export function ProfileView({
               onClearFilters={isAllActive ? undefined : handleSelectAll}
               defaultPageSize={15}
               maxVisiblePages={5}
+              publicFallback={!signedIn}
+              onMembersOnlyChange={setShowingPostsOnly}
             />
           </div>
           </>

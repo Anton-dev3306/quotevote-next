@@ -3,6 +3,16 @@ import { activityResolver, normalizeActivityEvents } from '~/data/resolvers/acti
 import { ACTIVITY_SELECT } from '~/data/resolvers/utils/activities';
 import type { GraphQLContext, ActivityQueryArgs } from '~/types/graphql';
 
+// The batch loading has its own tests (hydrateActivities.test.ts); here it only
+// marks each entry so the resolver's hand-off can be checked.
+const mockHydrateActivities = jest.fn(async (_prisma: unknown, activities: object[]) =>
+  activities.map((a) => ({ ...a, hydrated: true }))
+);
+jest.mock('~/data/resolvers/utils/hydrateActivities', () => ({
+  hydrateActivities: (prisma: unknown, activities: object[]) =>
+    mockHydrateActivities(prisma, activities),
+}));
+
 jest.mock('~/data/utils/logger', () => ({
   logger: {
     warn: jest.fn(),
@@ -72,12 +82,48 @@ describe('activityResolver', () => {
   });
 
   describe('Query.activities', () => {
-    it('requires authentication', async () => {
+    it('requires authentication for the following feed (no user_id)', async () => {
       const ctx = { ...mockContext(), user: null };
 
-      const promise = activityResolver.Query.activities(null, args(), ctx);
+      const promise = activityResolver.Query.activities(null, args({ user_id: '' }), ctx);
       await expect(promise).rejects.toThrow(GraphQLError);
       await expect(promise).rejects.toMatchObject({ extensions: { code: 'UNAUTHENTICATED' } });
+      expect(ctx.prisma.activity.findMany).not.toHaveBeenCalled();
+      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("returns one user's activity to a signed-out visitor", async () => {
+      const ctx = { ...mockContext(), user: null };
+      (ctx.prisma.activity.count as jest.Mock).mockResolvedValue(1);
+      (ctx.prisma.activity.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: '60d5ec49ad414d7a8d5464b0',
+          userId: profileId,
+          postId: '60d5ec49ad414d7a8d5464b1',
+          voteId: null,
+          commentId: null,
+          quoteId: null,
+          activityType: 'POSTED',
+          content: 'posted',
+          created: new Date('2024-01-01T00:00:00Z'),
+        },
+      ]);
+
+      const result = await activityResolver.Query.activities(null, args(), ctx);
+
+      expect(ctx.prisma.activity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: profileId } })
+      );
+      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(result.entities).toHaveLength(1);
+      expect(result.pagination.total_count).toBe(1);
+    });
+
+    it('still rejects a malformed user_id from a signed-out visitor', async () => {
+      const ctx = { ...mockContext(), user: null };
+
+      const promise = activityResolver.Query.activities(null, args({ user_id: '{"$ne":null}' }), ctx);
+      await expect(promise).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } });
       expect(ctx.prisma.activity.findMany).not.toHaveBeenCalled();
     });
 
@@ -187,10 +233,16 @@ describe('activityResolver', () => {
             activityType: 'VOTED',
             content: 'voted',
             created,
+            hydrated: true,
           },
         ],
         pagination: { total_count: 1, limit: 15, offset: 0 },
       });
+      // The whole page is loaded in one hand-off, with the request's Prisma client.
+      expect(mockHydrateActivities).toHaveBeenCalledTimes(1);
+      expect(mockHydrateActivities).toHaveBeenCalledWith(ctx.prisma, [
+        expect.objectContaining({ _id: activityId }),
+      ]);
     });
 
     it('defaults limit to 10 and offset to 0 for missing or invalid values', async () => {

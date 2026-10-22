@@ -294,6 +294,22 @@ export interface Activity {
   created: Date | string;
 }
 
+/** Ids of a post's votes, comments and quotes, enough for the counts on an activity card. */
+export interface ActivityPostCounts {
+  votes: { _id: string }[];
+  comments: { _id: string }[];
+  quotes: { _id: string }[];
+}
+
+/** An activity with the records an activity card shows, loaded in batches per page. */
+export interface HydratedActivity extends Activity {
+  user: User | null;
+  post: (Post & ActivityPostCounts & { creator: User | null }) | null;
+  vote: Vote | null;
+  comment: Comment | null;
+  quote: Quote | null;
+}
+
 // ============================================================================
 // Tag Types
 // ============================================================================

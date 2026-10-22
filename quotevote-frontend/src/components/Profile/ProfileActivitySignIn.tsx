@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 import type { ProfileActivitySignInProps } from "@/types/profile";
 
 /**
- * Shown to signed-out visitors above a profile's public posts. The live API only
- * returns votes, comments and quotes to members, so this says where the rest is.
+ * Shown to signed-out visitors above a profile's activity while the live API only
+ * returns posts to them. Says where the rest of the activity is.
  */
 export function ProfileActivitySignIn({ displayName }: ProfileActivitySignInProps) {
   const { openAuthModal } = useAuthModal();
