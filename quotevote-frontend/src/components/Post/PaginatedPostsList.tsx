@@ -36,6 +36,8 @@ export default function PaginatedPostsList({
   showFirstLast = true,
   maxVisiblePages = 5,
   loadMoreMode = false,
+  emptyTitle = 'No posts yet',
+  emptyMessage = 'New posts will show up here.',
   onPageChange,
   onPageSizeChange,
   onRefresh,
@@ -235,7 +237,7 @@ export default function PaginatedPostsList({
   }
   const renderEmpty = () => {
     const EmptyIcon = hasFilters ? SearchX : FileText
-    let message = 'New posts will show up here.'
+    let message = emptyMessage
     if (searchKey) {
       message = `Nothing matches \u201c${searchKey}\u201d${otherFilters ? ' with the current filters' : ''}. Try other words${otherFilters ? ' or clear the filters' : ''}.`
     } else if (friendsOnly && !groupId && !startDateRange && !endDateRange) {
@@ -253,7 +255,7 @@ export default function PaginatedPostsList({
           <EmptyIcon className="size-6 text-muted-foreground" aria-hidden="true" />
         </span>
         <h3 className="text-base font-semibold text-foreground">
-          {hasFilters ? 'No posts found' : 'No posts yet'}
+          {hasFilters ? 'No posts found' : emptyTitle}
         </h3>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">{message}</p>
         {hasFilters && (

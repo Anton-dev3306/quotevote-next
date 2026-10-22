@@ -131,6 +131,20 @@ describe('PaginatedPostsList Component', () => {
       expect(screen.queryByRole('button', { name: 'Clear search and filters' })).not.toBeInTheDocument()
     })
 
+    it("uses the caller's empty text, e.g. for a profile's posts", () => {
+      render(
+        <PaginatedPostsList
+          userId="u1"
+          loadMoreMode
+          emptyTitle="No posts yet"
+          emptyMessage="Ada hasn't posted anything yet."
+        />
+      )
+      const empty = screen.getByTestId('posts-empty')
+      expect(empty).toHaveTextContent("Ada hasn't posted anything yet.")
+      expect(screen.queryByRole('button', { name: 'Clear search and filters' })).not.toBeInTheDocument()
+    })
+
     it('shows a plain message instead of the raw error, with a retry', () => {
       const refetch = jest.fn()
       mockUseQuery.mockReturnValue({

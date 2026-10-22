@@ -246,6 +246,10 @@ export interface PaginatedPostsListProps {
   // Load more mode (infinite scroll alternative)
   loadMoreMode?: boolean
 
+  /** Empty-state text when no filters are applied, e.g. on a profile. */
+  emptyTitle?: string
+  emptyMessage?: string
+
   // Styling
   className?: string
   contentClassName?: string
