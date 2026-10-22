@@ -2,7 +2,7 @@
  * Authentication utilities
  *
  * Token helpers write to both localStorage and a `qv-token` cookie so that
- * the Next.js edge middleware can read the token without accessing localStorage.
+ * the Next.js proxy can read the token without accessing localStorage.
  */
 
 import type { LoginResponse } from '@/types/login';
@@ -20,7 +20,7 @@ export function getToken(): string | null {
 
 /**
  * Persist the auth token to localStorage and to a `qv-token` cookie.
- * The cookie is readable by Next.js middleware (edge runtime).
+ * The cookie is readable by the Next.js proxy (src/proxy.ts).
  */
 export function setToken(token: string): void {
   if (typeof window === 'undefined') return;
@@ -65,7 +65,7 @@ export async function loginUser(
             return { success: false, error: 'No token received from server.' };
         }
 
-        // Persist token to localStorage + qv-token cookie for middleware
+        // Persist token to localStorage + qv-token cookie for the proxy
         setToken(token);
 
         return { success: true, data: { user: user as Record<string, unknown>, token } };

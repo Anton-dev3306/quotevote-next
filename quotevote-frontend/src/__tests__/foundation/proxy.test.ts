@@ -1,5 +1,5 @@
 /**
- * Middleware + JWT session tests for auth redirect / admin gate behavior.
+ * Proxy (route gate) + JWT session tests for auth redirect / admin gate behavior.
  *
  * Uses the Node environment so Web Crypto / HMAC verification matches
  * production Edge crypto (jsdom's crypto.subtle is unreliable in CI).
@@ -22,7 +22,7 @@ jest.mock('next/server', () => ({
 }))
 
 import { createHmac } from 'crypto'
-import { middleware } from '../../middleware'
+import { proxy } from '@/proxy'
 import { NextResponse } from 'next/server'
 import { resolveJwtSession } from '@/lib/auth/jwtSession'
 
@@ -148,7 +148,7 @@ describe('Middleware', () => {
 
   describe('Protected route gates', () => {
     it('redirects unauthenticated users from /settings to /auths/login', async () => {
-      await middleware(createMockRequest('/settings'))
+      await proxy(createMockRequest('/settings'))
       expect(NextResponse.redirect).toHaveBeenCalled()
       const redirectUrl = (NextResponse.redirect as jest.Mock).mock.calls[0][0] as URL
       expect(redirectUrl.pathname).toBe('/auths/login')
@@ -156,32 +156,32 @@ describe('Middleware', () => {
     })
 
     it('redirects unauthenticated users from /notifications to /auths/login', async () => {
-      await middleware(createMockRequest('/notifications'))
+      await proxy(createMockRequest('/notifications'))
       expect(NextResponse.redirect).toHaveBeenCalled()
     })
 
     it('allows unauthenticated users to view public post pages', async () => {
-      await middleware(createMockRequest('/post/general/sample-title/abc123'))
+      await proxy(createMockRequest('/post/general/sample-title/abc123'))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
 
     it('allows unauthenticated users to view public profiles', async () => {
-      await middleware(createMockRequest('/profile/testuser'))
+      await proxy(createMockRequest('/profile/testuser'))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
 
     it('allows users with a non-expired unsigned session through protected routes when secret unset', async () => {
       const token = unsignedToken({ exp: Math.floor(Date.now() / 1000) + 3600 })
-      await middleware(createMockRequest('/settings', token))
+      await proxy(createMockRequest('/settings', token))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
 
     it('redirects expired cookie from /settings to login and clears cookie', async () => {
       const token = unsignedToken({ exp: Math.floor(Date.now() / 1000) - 10 })
-      await middleware(createMockRequest('/settings', token))
+      await proxy(createMockRequest('/settings', token))
       expect(NextResponse.redirect).toHaveBeenCalled()
       const res = (NextResponse.redirect as jest.Mock).mock.results[0].value as {
         cookies: { set: jest.Mock }
@@ -197,26 +197,26 @@ describe('Middleware', () => {
   describe('Auth page redirect', () => {
     it('allows login when cookie is expired (does not bounce to /)', async () => {
       const token = unsignedToken({ exp: Math.floor(Date.now() / 1000) - 10 })
-      await middleware(createMockRequest('/auths/login', token))
+      await proxy(createMockRequest('/auths/login', token))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
 
     it('allows login when cookie is malformed', async () => {
-      await middleware(createMockRequest('/auths/login', 'garbage'))
+      await proxy(createMockRequest('/auths/login', 'garbage'))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
 
     it('allows login with no cookie', async () => {
-      await middleware(createMockRequest('/auths/login'))
+      await proxy(createMockRequest('/auths/login'))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
 
     it('redirects valid session away from login', async () => {
       const token = unsignedToken({ exp: Math.floor(Date.now() / 1000) + 3600 })
-      await middleware(createMockRequest('/auths/login', token))
+      await proxy(createMockRequest('/auths/login', token))
       expect(NextResponse.redirect).toHaveBeenCalled()
       const redirectUrl = (NextResponse.redirect as jest.Mock).mock.calls[0][0] as URL
       expect(redirectUrl.pathname).toBe('/')
@@ -224,7 +224,7 @@ describe('Middleware', () => {
 
     it('does NOT redirect from /auths/password-reset with a valid session', async () => {
       const token = unsignedToken({ exp: Math.floor(Date.now() / 1000) + 3600 })
-      await middleware(createMockRequest('/auths/password-reset', token))
+      await proxy(createMockRequest('/auths/password-reset', token))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
@@ -237,7 +237,7 @@ describe('Middleware', () => {
         exp: Math.floor(Date.now() / 1000) + 3600,
         admin: true,
       })
-      await middleware(createMockRequest('/control-panel', forged))
+      await proxy(createMockRequest('/control-panel', forged))
       // Invalid signature → treated as invalid → login redirect
       expect(NextResponse.redirect).toHaveBeenCalled()
       const redirectUrl = (NextResponse.redirect as jest.Mock).mock.calls[0][0] as URL
@@ -251,7 +251,7 @@ describe('Middleware', () => {
         'test_secret',
       )
 
-      await middleware(createMockRequest('/control-panel', token))
+      await proxy(createMockRequest('/control-panel', token))
       expect(NextResponse.next).toHaveBeenCalled()
       expect(NextResponse.redirect).not.toHaveBeenCalled()
     })
@@ -263,7 +263,7 @@ describe('Middleware', () => {
         'test_secret',
       )
 
-      await middleware(createMockRequest('/control-panel', token))
+      await proxy(createMockRequest('/control-panel', token))
       expect(NextResponse.redirect).toHaveBeenCalled()
       const redirectUrl = (NextResponse.redirect as jest.Mock).mock.calls[0][0] as URL
       expect(redirectUrl.pathname).toBe('/')

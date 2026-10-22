@@ -22,7 +22,9 @@ function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   return response;
 }
 
-export async function middleware(request: NextRequest) {
+// Next.js 16 renamed the `middleware` file convention to `proxy` (same matcher and
+// behavior). It runs on the Node.js runtime.
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('qv-token')?.value;
   const session = await resolveJwtSession(token);
