@@ -1,5 +1,6 @@
 /**
- * Edge-safe JWT session inspection for Next.js middleware.
+ * JWT session inspection for the Next.js proxy (src/proxy.ts). Uses Web Crypto,
+ * so it also runs in the Edge runtime.
  *
  * When JWT_SECRET is configured, HS256 signatures are verified via Web Crypto
  * (authoritative). When it is not, only structural + expiry checks run — admin
@@ -63,7 +64,7 @@ async function verifyHs256(token: string, secret: string): Promise<Record<string
   const signature = decodeBase64Url(signatureB64)
 
   // Prefer Node HMAC when available (Jest / Node). Avoid a static `crypto`
-  // import so Next.js Edge middleware bundling stays valid.
+  // import so the module still bundles for the Edge runtime.
   const nodeVerified = verifyHs256WithNodeHmac(signingInput, signature, secret)
   if (nodeVerified !== undefined) {
     if (!nodeVerified) return null
@@ -143,7 +144,7 @@ export async function resolveJwtSession(token: string | undefined | null): Promi
   if (isExpiredPayload(payload)) return { status: 'expired' }
 
   // Without JWT_SECRET we cannot trust claims — treat as a non-admin session
-  // for middleware UX only. Server APIs remain the authorization boundary.
+  // for proxy redirects only. Server APIs remain the authorization boundary.
   return { status: 'valid', admin: false, verified: false }
 }
 
