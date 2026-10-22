@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql';
 import type { Prisma } from '@prisma/client';
 import { ACTIVITY_SELECT, toActivityEntity } from '~/data/resolvers/utils/activities';
+import { hydrateActivities } from '~/data/resolvers/utils/hydrateActivities';
 import { logger } from '~/data/utils/logger';
 import { ActivityEventTypeValues } from '~/data/utils/constants';
 import type * as Common from '~/types/common';
@@ -57,7 +58,7 @@ export const activityResolver = {
       _parent: unknown,
       args: ActivityQueryArgs,
       context: GraphQLContext
-    ): Promise<Common.PaginatedResult<Common.Activity>> => {
+    ): Promise<Common.PaginatedResult<Common.HydratedActivity>> => {
       const viewerId = context.user?._id;
       if (!args.user_id && !viewerId) {
         throw new GraphQLError('Authentication required', {
@@ -120,8 +121,15 @@ export const activityResolver = {
         }),
       ]);
 
+      // The schema has no Activity field resolvers, so attach the user, post and
+      // the vote, comment or quote here, in batches for the whole page.
+      const entities = await hydrateActivities(
+        context.prisma,
+        activitiesResult.map(toActivityEntity)
+      );
+
       return {
-        entities: activitiesResult.map(toActivityEntity),
+        entities,
         pagination: {
           total_count: total,
           limit,

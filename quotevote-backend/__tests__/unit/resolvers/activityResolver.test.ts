@@ -3,6 +3,16 @@ import { activityResolver, normalizeActivityEvents } from '~/data/resolvers/acti
 import { ACTIVITY_SELECT } from '~/data/resolvers/utils/activities';
 import type { GraphQLContext, ActivityQueryArgs } from '~/types/graphql';
 
+// The batch loading has its own tests (hydrateActivities.test.ts); here it only
+// marks each entry so the resolver's hand-off can be checked.
+const mockHydrateActivities = jest.fn(async (_prisma: unknown, activities: object[]) =>
+  activities.map((a) => ({ ...a, hydrated: true }))
+);
+jest.mock('~/data/resolvers/utils/hydrateActivities', () => ({
+  hydrateActivities: (prisma: unknown, activities: object[]) =>
+    mockHydrateActivities(prisma, activities),
+}));
+
 jest.mock('~/data/utils/logger', () => ({
   logger: {
     warn: jest.fn(),
@@ -223,10 +233,16 @@ describe('activityResolver', () => {
             activityType: 'VOTED',
             content: 'voted',
             created,
+            hydrated: true,
           },
         ],
         pagination: { total_count: 1, limit: 15, offset: 0 },
       });
+      // The whole page is loaded in one hand-off, with the request's Prisma client.
+      expect(mockHydrateActivities).toHaveBeenCalledTimes(1);
+      expect(mockHydrateActivities).toHaveBeenCalledWith(ctx.prisma, [
+        expect.objectContaining({ _id: activityId }),
+      ]);
     });
 
     it('defaults limit to 10 and offset to 0 for missing or invalid values', async () => {
