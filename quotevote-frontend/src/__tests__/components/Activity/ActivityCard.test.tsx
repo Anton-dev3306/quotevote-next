@@ -62,6 +62,22 @@ describe('ActivityCard', () => {
       const card = container.querySelector('[data-slot="card"]')
       expect(card).toHaveStyle({ backgroundColor: '#FFFFFF' })
     })
+
+    it('uses the theme text color on POSTED cards, which sit on the theme card color', () => {
+      const { container } = render(<ActivityCard {...defaultProps} />)
+      const card = container.querySelector('[data-slot="card"]') as HTMLElement
+      // Dark text on the dark-mode card was unreadable.
+      expect(card).toHaveClass('bg-card', 'text-card-foreground')
+      expect(card).not.toHaveClass('text-neutral-900')
+    })
+
+    it('keeps dark text on the light vote, comment and quote fills', () => {
+      const { container } = render(
+        <ActivityCard {...defaultProps} activityType="COMMENTED" cardColor="#FDD835" />
+      )
+      const card = container.querySelector('[data-slot="card"]') as HTMLElement
+      expect(card).toHaveClass('text-neutral-900')
+    })
   })
 
 

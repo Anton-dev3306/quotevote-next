@@ -154,6 +154,13 @@ export interface PaginatedActivityListProps {
   onRefresh?: () => void
   /** When filters are applied: shown as "Show all activity" in the empty state. */
   onClearFilters?: () => void
+  /**
+   * For signed-out visitors: if the API says the activity list needs an account,
+   * show the profile's public posts as activity cards instead of an error.
+   */
+  publicFallback?: boolean
+  /** Called with true while the list is showing public posts in place of activity. */
+  onMembersOnlyChange?: (membersOnly: boolean) => void
   
   // Styling
   className?: string

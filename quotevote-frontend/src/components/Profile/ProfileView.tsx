@@ -58,8 +58,11 @@ export function ProfileView({
   errorMessage,
 }: ProfileViewProps) {
   const [selectedFilters, setSelectedFilters] = useState<ProfileActivityType[]>([]);
-  // The live API only returns activity to members (#606). The session lives in the
-  // browser, so decide after mount to keep the server and client HTML the same.
+  // Activity is public. While the live API still keeps the activity list for members,
+  // guests see the person's posts in the same list, with a note about the rest.
+  const [showingPostsOnly, setShowingPostsOnly] = useState(false);
+  // The session lives in the browser, so decide after mount to keep the server and
+  // client HTML the same (#606).
   const hasMounted = useHasMounted();
   const sessionUserId = useAppStore((state) => state.user.data._id || state.user.data.id);
   const signedIn = hasMounted && (Boolean(sessionUserId) || isAuthenticated());
@@ -135,10 +138,13 @@ export function ProfileView({
           >
             Loading activity…
           </div>
-        ) : !signedIn ? (
-          <ProfileActivitySignIn displayName={profileUser.name || profileUser.username} />
         ) : (
           <>
+          {!signedIn && showingPostsOnly && (
+            <div className="mb-3">
+              <ProfileActivitySignIn displayName={profileUser.name || profileUser.username} />
+            </div>
+          )}
           {/* A filter, not tabs (#536): labelled chips that can be combined. */}
           <div
             role="group"
@@ -208,6 +214,8 @@ export function ProfileView({
               onClearFilters={isAllActive ? undefined : handleSelectAll}
               defaultPageSize={15}
               maxVisiblePages={5}
+              publicFallback={!signedIn}
+              onMembersOnlyChange={setShowingPostsOnly}
             />
           </div>
           </>
