@@ -22,7 +22,7 @@ jest.mock('@/context/AuthModalContext', () => ({
   useAuthModal: () => ({ openAuthModal: mockOpenAuthModal }),
 }));
 
-/** Activity is for members (#606), so most tests run signed in. */
+/** The activity list is for members (#606), so most tests run signed in. */
 function signIn() {
   useAppStore.setState((s) => ({ user: { ...s.user, data: { _id: 'viewer-id', username: 'viewer' } } }));
 }
@@ -55,6 +55,15 @@ jest.mock('@/components/Activity/PaginatedActivityList', () => ({
       data-events={activityEvent.join(',')}
     >
       {activityEvent.length === 0 ? 'ALL' : activityEvent.join(',')}
+    </div>
+  ),
+}));
+
+jest.mock('@/components/Post/PaginatedPostsList', () => ({
+  __esModule: true,
+  default: ({ userId, emptyMessage }: { userId?: string; emptyMessage?: string }) => (
+    <div data-testid="paginated-posts-list" data-user-id={userId}>
+      {emptyMessage}
     </div>
   ),
 }));
@@ -457,19 +466,23 @@ describe('ProfileView', () => {
       resetStore();
     });
 
-    it('asks a guest to sign in instead of loading activity that would fail', () => {
+    it("shows a guest the person's public posts instead of an error", () => {
       render(<ProfileView profileUser={mockProfileUser} />);
-      expect(
-        screen.getByRole('heading', { name: "Sign in to see Test User's activity" })
-      ).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'Posts by Test User' })).toBeInTheDocument();
+      expect(screen.getByTestId('paginated-posts-list')).toHaveAttribute('data-user-id', 'user1');
+      expect(screen.getByText("Test User hasn't posted anything yet.")).toBeInTheDocument();
+      // The activity list and its filters need an account on the live API.
       expect(screen.queryByTestId('paginated-activity-list')).not.toBeInTheDocument();
       expect(screen.queryByTestId('profile-activity-filters')).not.toBeInTheDocument();
       expect(screen.getByTestId('profile-header')).toBeInTheDocument();
       expect(screen.getByTestId('reputation-display')).toBeInTheDocument();
     });
 
-    it('opens the login dialog from Sign in and links to the invite request', async () => {
+    it('says the rest of the activity is for members, with Sign in and Request an invite', async () => {
       render(<ProfileView profileUser={mockProfileUser} />);
+      expect(screen.getByTestId('activity-signin')).toHaveTextContent(
+        "Showing Test User's posts. Sign in to see their votes, comments and quotes too."
+      );
       await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }));
       expect(mockOpenAuthModal).toHaveBeenCalledWith({ view: 'login' });
       expect(screen.getByRole('link', { name: 'Request an invite' })).toHaveAttribute(
@@ -480,9 +493,8 @@ describe('ProfileView', () => {
 
     it('falls back to the username when the person has no name', () => {
       render(<ProfileView profileUser={{ ...mockProfileUser, name: undefined }} />);
-      expect(
-        screen.getByRole('heading', { name: "Sign in to see testuser's activity" })
-      ).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'Posts by testuser' })).toBeInTheDocument();
+      expect(screen.getByTestId('activity-signin')).toHaveTextContent("Showing testuser's posts.");
     });
 
     it('shows the activity once the visitor signs in', () => {
@@ -490,13 +502,15 @@ describe('ProfileView', () => {
       act(() => signIn());
       expect(screen.getByTestId('paginated-activity-list')).toBeInTheDocument();
       expect(screen.queryByTestId('activity-signin')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('paginated-posts-list')).not.toBeInTheDocument();
     });
 
     it('renders a neutral loading state on the server, where the session is unknown', () => {
       signIn();
       const html = renderToString(<ProfileView profileUser={mockProfileUser} />);
       expect(html).toContain('Loading activity');
-      expect(html).not.toContain('Sign in to see');
+      expect(html).not.toContain('Showing Test User');
+      expect(html).not.toContain('paginated-posts-list');
       expect(html).not.toContain('paginated-activity-list');
     });
   });
