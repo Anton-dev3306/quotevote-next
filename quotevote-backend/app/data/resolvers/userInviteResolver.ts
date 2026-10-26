@@ -51,6 +51,38 @@ function isDeclinedInviteStatus(inviteStatus: string): boolean {
 
 export const userInviteResolver = {
   Query: {
+    userInviteRequests: async (
+      _parent: unknown,
+      _args: unknown,
+      context: GraphQLContext
+    ): Promise<Common.UserInviteRequest[]> => {
+      if (!context.user?._id) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+      if (context.user.admin !== true) {
+        throw new GraphQLError('Admin access required', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+
+      // Requested and declined access requests, newest first. Legacy user records
+      // have no createdAt, so this selects and sorts on `joined` only.
+      const users = await context.prisma.user.findMany({
+        where: { status: { in: [INVITE_STATUS_REQUESTED, INVITE_STATUS_DECLINED] } },
+        orderBy: { joined: 'desc' },
+        select: { id: true, email: true, status: true, joined: true },
+      });
+
+      return users.map((u) => ({
+        _id: u.id,
+        email: u.email,
+        status: String(u.status),
+        joined: u.joined ?? null,
+      }));
+    },
+
     verifyInviteSignupToken: async (
       _parent: unknown,
       args: { token: string },

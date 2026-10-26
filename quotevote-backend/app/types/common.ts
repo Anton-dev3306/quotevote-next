@@ -397,6 +397,15 @@ export interface UserInvite {
   expiresAt?: Date | string;
 }
 
+/** An access request as the admin screens list it (legacy `userInviteRequests`). */
+export interface UserInviteRequest {
+  _id: string;
+  email: string;
+  /** Legacy invite code as a string: "1" requested, "2" declined. */
+  status: string;
+  joined: Date | null;
+}
+
 export type ReportReason =
   | 'spam'
   | 'harassment'
