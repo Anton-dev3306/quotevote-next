@@ -14,6 +14,8 @@ const config: Config = {
     '^~/(.*)$': '<rootDir>/app/$1',
   },
 
+  // Every test is TypeScript (#170); .js files are never picked up as tests.
+  testMatch: ['<rootDir>/__tests__/**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/.next/', '_helpers\\.ts$', 'prisma-.*\\.test\\.ts$'],
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
