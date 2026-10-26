@@ -6,7 +6,8 @@ model User {
   email             String        @unique
   username          String        @unique
   name              String?
-  password          String?
+  /// Legacy stores the bcrypt hash as `hash_password`; both servers share this field.
+  password          String?       @map("hash_password")
   avatar            Json?
   bio               String?
   location          String?
