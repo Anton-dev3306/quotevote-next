@@ -4,6 +4,7 @@ import { Prisma, ReportStatus } from '@prisma/client';
 import type { ReportReason, ReportSeverity } from '@prisma/client';
 import { normalizeBio } from '../utils/bioValidation';
 import { toIsoDateString } from '~/data/utils/serializeDate';
+import { verifyToken } from '~/data/utils/authentication';
 import {
   PUBLIC_USER_SELECT,
   toPublicUser,
@@ -11,6 +12,7 @@ import {
 } from '~/data/utils/userPrismaMapper';
 import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
+import type { JWTPayload } from '~/types/express';
 
 /** Legacy invite codes: 1 = requested, 4 = approved (not yet signed up). */
 const UNFINISHED_INVITE_STATUSES = new Set([1, 4]);
@@ -44,6 +46,15 @@ type UserReportResult = {
 
 const BOT_REPORTED_USERS_DEFAULT_LIMIT = 100;
 const BOT_REPORTED_USERS_MAX_LIMIT = 500;
+
+/** Admin user list paging, same caps as legacy `getUsers`. */
+const USERS_DEFAULT_LIMIT = 50;
+const USERS_MAX_LIMIT = 100;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Legacy invite code for an access request that hasn't been decided yet. */
+const INVITE_STATUS_REQUESTED = 1;
 // Same fields legacy's getBotReportedUsers selected, plus contributorBadge
 // because the admin bot list asks for it.
 const BOT_REPORTED_USER_SELECT = {
@@ -235,6 +246,95 @@ export const userResolver = {
       });
 
       return users.map((u) => toPublicUser(u as PrismaUserRecord));
+    },
+
+    users: async (
+      _parent: unknown,
+      args: { limit?: number | null; offset?: number | null },
+      context: GraphQLContext
+    ): Promise<Common.User[]> => {
+      if (!context.user?._id) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+      if (context.user.admin !== true) {
+        throw new GraphQLError('Admin access required', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+
+      const limit = Math.min(Math.max(args.limit ?? USERS_DEFAULT_LIMIT, 1), USERS_MAX_LIMIT);
+      const offset = Math.max(args.offset ?? 0, 0);
+
+      // Newest first, like legacy. Public fields only, so no password or token
+      // fields leave the server even for admins.
+      const users = await context.prisma.user.findMany({
+        orderBy: { joined: 'desc' },
+        skip: offset,
+        take: limit,
+        select: PUBLIC_USER_SELECT,
+      });
+
+      return users.map((u) => toPublicUser(u as PrismaUserRecord));
+    },
+
+    checkDuplicateEmail: async (
+      _parent: unknown,
+      args: { email: string },
+      context: GraphQLContext
+    ): Promise<Array<{ isDuplicate: boolean; duplicateCount: number }>> => {
+      const email = args.email?.trim() ?? '';
+      if (!EMAIL_PATTERN.test(email)) {
+        throw new GraphQLError('Invalid email format', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      // Case-insensitive exact match without building a regex from user input.
+      const matches = await context.prisma.user.findMany({
+        where: { email: { equals: email, mode: 'insensitive' } },
+        select: { status: true },
+      });
+
+      // An undecided request may be submitted again, so it isn't a duplicate (legacy rule).
+      if (matches.some((u) => u.status === INVITE_STATUS_REQUESTED)) return [];
+
+      // This query is public: the form only needs to know a match exists, so no
+      // user fields are returned.
+      return matches.map(() => ({
+        isDuplicate: matches.length > 1,
+        duplicateCount: matches.length,
+      }));
+    },
+
+    verifyUserPasswordResetToken: async (
+      _parent: unknown,
+      args: { token: string },
+      context: GraphQLContext
+    ): Promise<{ _id: string; email: string; username: string } | null> => {
+      const token = args.token?.trim();
+      if (!token) return null;
+
+      // An invalid or expired link resolves to null rather than an auth error,
+      // so the page shows its "link expired" state instead of signing the visitor out.
+      // Reset links from the legacy server carry `_id`; tokens from this server carry `userId`.
+      let userId: string | undefined;
+      try {
+        const payload = (await verifyToken(token)) as JWTPayload & { _id?: string };
+        userId = payload.userId ?? payload._id;
+      } catch {
+        return null;
+      }
+      if (!userId || !isObjectId(userId)) return null;
+
+      const user = await context.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, username: true, accountStatus: true },
+      });
+      if (!user || user.accountStatus === 'disabled') return null;
+
+      return { _id: user.id, email: user.email, username: user.username };
     },
   },
 

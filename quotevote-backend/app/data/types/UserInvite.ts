@@ -7,7 +7,6 @@ import {
 import type { GraphQLContext } from '~/types/graphql';
 import type * as Common from '~/types/common';
 import { DateScalar } from './scalars';
-import { InviteStatusEnum } from './enums';
 
 export const UserInviteType: GraphQLObjectType<Common.UserInvite, GraphQLContext> =
   new GraphQLObjectType<Common.UserInvite, GraphQLContext>({
@@ -16,7 +15,8 @@ export const UserInviteType: GraphQLObjectType<Common.UserInvite, GraphQLContext
     fields: (): GraphQLFieldConfigMap<Common.UserInvite, GraphQLContext> => ({
       _id: { type: new GraphQLNonNull(GraphQLString) },
       email: { type: new GraphQLNonNull(GraphQLString) },
-      status: { type: InviteStatusEnum },
+      // Legacy invite code as a string ("1" requested, "2" declined), as production serves it.
+      status: { type: GraphQLString },
       _userId: {
         type: GraphQLString,
         resolve: (invite) => (invite as Common.UserInvite & { _userId?: string })._userId,
