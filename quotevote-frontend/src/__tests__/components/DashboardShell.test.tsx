@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useAppStore } from "@/store";
 import { useQuery } from "@apollo/client/react";
-import { GET_NOTIFICATIONS } from "@/graphql/queries";
+import { GET_CHAT_ROOMS, GET_NOTIFICATIONS } from "@/graphql/queries";
 
 const mockUseQuery = useQuery as unknown as jest.Mock;
 
@@ -365,5 +365,35 @@ describe("DashboardShell account dropdown (#536)", () => {
 
     await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
     expect(mockPush).toHaveBeenCalledWith("/settings");
+  });
+});
+
+describe("DashboardShell chat rooms in background tabs (#625)", () => {
+  afterEach(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    mockUseQuery.mockImplementation(() => ({ data: undefined, loading: false }));
+  });
+
+  it("refetches chat rooms when the tab becomes visible again", () => {
+    const refetchRooms = jest.fn().mockResolvedValue({});
+    mockUseQuery.mockImplementation((query: unknown) =>
+      query === GET_CHAT_ROOMS
+        ? { data: undefined, loading: false, refetch: refetchRooms }
+        : { data: undefined, loading: false }
+    );
+    useAppStore.getState().setUserData(regularUser);
+    render(
+      <DashboardShell>
+        <div>feed</div>
+      </DashboardShell>
+    );
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(refetchRooms).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(refetchRooms).toHaveBeenCalledTimes(1);
   });
 });

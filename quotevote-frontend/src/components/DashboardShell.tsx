@@ -31,6 +31,7 @@ import { useAuthModal } from '@/context/AuthModalContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { toAbsolutePostUrl } from '@/lib/utils/sanitizeUrl';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
+import { useOnTabVisible } from '@/hooks/useOnTabVisible';
 import { usePresenceSubscription } from '@/hooks/usePresenceSubscription';
 import { useRosterManagement } from '@/hooks/useRosterManagement';
 import { useSyncCurrentUserProfile } from '@/hooks/useSyncCurrentUserProfile';
@@ -218,11 +219,19 @@ export function DashboardShell({
     { skip: !loggedIn, fetchPolicy: 'cache-and-network', pollInterval: loggedIn ? 60000 : 0 }
   );
 
-  const { data: roomsData } = useQuery<{ messageRooms: ChatRoom[] }>(GET_CHAT_ROOMS, {
-    skip: !loggedIn,
-    fetchPolicy: 'cache-and-network',
-    pollInterval: loggedIn ? 8000 : 0,
-  });
+  const { data: roomsData, refetch: refetchRooms } = useQuery<{ messageRooms: ChatRoom[] }>(
+    GET_CHAT_ROOMS,
+    {
+      skip: !loggedIn,
+      fetchPolicy: 'cache-and-network',
+      pollInterval: loggedIn ? 8000 : 0,
+    }
+  );
+
+  // Polls pause in background tabs, so refresh the unread badge on return (#625).
+  useOnTabVisible(() => {
+    refetchRooms().catch(() => undefined);
+  }, loggedIn);
 
   const unreadCount = useMemo(
     () => notifData?.notifications?.filter((n) => n.status === 'new').length ?? 0,

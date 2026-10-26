@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useSubscription, useMutation } from '@apollo/client/react'
 import ScrollableFeed from 'react-scrollable-feed'
 
@@ -10,6 +10,9 @@ import { NEW_MESSAGE_SUBSCRIPTION } from '@/graphql/subscriptions'
 import type { ChatRoom, ChatMessage, ChatParticipant } from '@/types/chat'
 import type { PostQueryData } from '@/types/post'
 import type { MessageSubscriptionResult } from '@/types/hooks'
+import { useAppStore } from '@/store'
+import useSocketConnected from '@/hooks/useSocketConnected'
+import useOnTabVisible from '@/hooks/useOnTabVisible'
 
 interface MessageItemListProps {
   room: ChatRoom | null
@@ -20,6 +23,8 @@ export default function MessageItemList({ room }: MessageItemListProps) {
   const messageType = room?.messageType
   const postDetails = room?.postDetails ?? null
   const postId = postDetails?._id ?? null
+  const currentUserId = useAppStore((state) => state.user.data?._id)
+  const socketConnected = useSocketConnected()
 
   const {
     error,
@@ -28,7 +33,8 @@ export default function MessageItemList({ room }: MessageItemListProps) {
   } = useQuery<{ messages: ChatMessage[] }>(GET_ROOM_MESSAGES, {
     variables: { messageRoomId },
     skip: !messageRoomId,
-    pollInterval: messageRoomId ? 3000 : 0,
+    // New messages arrive over the subscription. Poll only while it's down (#625).
+    pollInterval: messageRoomId && !socketConnected ? 3000 : 0,
     fetchPolicy: 'cache-and-network',
   })
 
@@ -57,11 +63,22 @@ export default function MessageItemList({ room }: MessageItemListProps) {
     }
   }, [subscriptionError, refetch])
 
-  // Mark messages as read when this room is open (matching monorepo behaviour)
+  // Catch up once when the socket reconnects, in case a message arrived in between.
+  const socketStateRef = useRef<'never' | 'up' | 'down'>('never')
+  useEffect(() => {
+    if (socketConnected) {
+      if (socketStateRef.current === 'down' && messageRoomId) refetch().catch(() => undefined)
+      socketStateRef.current = 'up'
+    } else if (socketStateRef.current === 'up') {
+      socketStateRef.current = 'down'
+    }
+  }, [socketConnected, messageRoomId, refetch])
+
+  // Mark the room read when it opens, when a message from someone else comes in,
+  // and when the tab comes back into view. No fixed interval (#625).
   const [markRead] = useMutation(READ_MESSAGES)
   const markReadRef = useRef(markRead)
   const currentRoomRef = useRef<string | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMarkingRef = useRef(false)
 
@@ -69,48 +86,56 @@ export default function MessageItemList({ room }: MessageItemListProps) {
     markReadRef.current = markRead
   }, [markRead])
 
-  useEffect(() => {
-    // Clear timers whenever messageRoomId changes or is removed
-    const clearTimers = () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      intervalRef.current = null
-      timeoutRef.current = null
+  const latestIncomingId = useMemo(() => {
+    const messages = data?.messages ?? []
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].userId !== currentUserId) return messages[i]._id
     }
+    return null
+  }, [data, currentUserId])
+
+  const doMark = useCallback(async () => {
+    const roomId = currentRoomRef.current
+    if (!roomId || isMarkingRef.current) return
+    // A hidden tab hasn't been read yet; the visibility handler marks it later.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+    isMarkingRef.current = true
+    try {
+      await markReadRef.current({ variables: { messageRoomId: roomId } })
+    } catch {
+      // silent — not critical if mark-as-read fails
+    } finally {
+      isMarkingRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = null
 
     // Skip staged rooms (empty string _id) and missing IDs
     if (!messageRoomId) {
-      clearTimers()
       currentRoomRef.current = null
       return
     }
 
-    // Room changed — reset everything
-    if (currentRoomRef.current !== messageRoomId) {
-      clearTimers()
-      isMarkingRef.current = false
-    }
+    if (currentRoomRef.current !== messageRoomId) isMarkingRef.current = false
     currentRoomRef.current = messageRoomId
 
-    const doMark = async () => {
-      if (isMarkingRef.current) return
-      if (currentRoomRef.current !== messageRoomId) return
-      isMarkingRef.current = true
-      try {
-        await markReadRef.current({ variables: { messageRoomId } })
-      } catch {
-        // silent — not critical if mark-as-read fails
-      } finally {
-        if (currentRoomRef.current === messageRoomId) isMarkingRef.current = false
-      }
+    // Short delay so opening and the first load collapse into one write
+    timeoutRef.current = setTimeout(() => {
+      void doMark()
+    }, 800)
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
     }
+  }, [messageRoomId, latestIncomingId, doMark])
 
-    // Initial mark after 800ms, then every 5s to pick up new incoming messages
-    timeoutRef.current = setTimeout(doMark, 800)
-    intervalRef.current = setInterval(doMark, 5000)
-
-    return clearTimers
-  }, [messageRoomId])
+  useOnTabVisible(() => {
+    void doMark()
+  }, !!messageRoomId)
 
   if (!messageRoomId) {
     return (
@@ -129,8 +154,8 @@ export default function MessageItemList({ room }: MessageItemListProps) {
   }
 
   // Render straight from `data` (which stays populated from the cache during
-  // the 3s background poll). Gating on `loading` would blank the list on every
-  // poll and make the messages blink.
+  // refetches and the fallback poll). Gating on `loading` would blank the list
+  // on every refetch and make the messages blink.
   const messageData: ChatMessage[] = data?.messages || []
   const post = postData?.post
   const postCreator = post?.creator

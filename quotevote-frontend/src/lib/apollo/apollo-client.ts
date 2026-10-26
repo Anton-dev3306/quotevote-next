@@ -13,6 +13,7 @@ import { ErrorLink } from "@apollo/client/link/error";
 import { getMainDefinition } from "@apollo/client/utilities";
 import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { createClient } from "graphql-ws";
+import { setSocketConnected } from "@/lib/apollo/socketStatus";
 import { map, Observable } from "rxjs";
 import { toast } from "sonner";
 import { env } from "@/config/env";
@@ -171,6 +172,9 @@ function createWsLink(): GraphQLWsLink | null {
         return true;
       },
       on: {
+        connected: () => {
+          setSocketConnected(true);
+        },
         opened: () => {
           log("WebSocket connection opened");
           // Reset retry count on successful connection
@@ -181,6 +185,7 @@ function createWsLink(): GraphQLWsLink | null {
           }
         },
         closed: (event?: unknown) => {
+          setSocketConnected(false);
           if (event && typeof event === "object" && "code" in event) {
             const closeEvent = event as { code?: number; reason?: string; wasClean?: boolean };
             log(
@@ -363,6 +368,9 @@ function createApolloClient(): ApolloClientType {
       watchQuery: {
         errorPolicy: "all",
         fetchPolicy: "cache-and-network",
+        // Polls pause in background tabs (#625).
+        skipPollAttempt: () =>
+          typeof document !== "undefined" && document.visibilityState === "hidden",
       },
       query: {
         errorPolicy: "all",

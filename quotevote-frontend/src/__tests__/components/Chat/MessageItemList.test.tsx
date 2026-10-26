@@ -9,7 +9,7 @@
  * - Subscription lifecycle events
  */
 
-import { render, screen, waitFor } from '@/__tests__/utils/test-utils'
+import { act, render, screen, waitFor } from '@/__tests__/utils/test-utils'
 import MessageItemList from '@/components/Chat/MessageItemList'
 import { GET_ROOM_MESSAGES, GET_POST } from '@/graphql/queries'
 import type { ChatRoom, ChatMessage } from '@/types/chat'
@@ -50,10 +50,24 @@ jest.mock('@/components/LoadingSpinner', () => ({
 // Mock useQuery and useSubscription from Apollo Client
 const mockUseQuery = jest.fn()
 const mockUseSubscription = jest.fn()
+const mockMarkRead = jest.fn()
 jest.mock('@apollo/client/react', () => ({
   ...jest.requireActual('@apollo/client/react'),
   useQuery: (...args: unknown[]) => mockUseQuery(...args),
   useSubscription: (...args: unknown[]) => mockUseSubscription(...args),
+  useMutation: () => [mockMarkRead],
+}))
+
+// The signed-in user is user1
+jest.mock('@/store', () => ({
+  useAppStore: (selector: (state: { user: { data: { _id: string } } }) => unknown) =>
+    selector({ user: { data: { _id: 'user1' } } }),
+}))
+
+let mockSocketConnected = false
+jest.mock('@/hooks/useSocketConnected', () => ({
+  __esModule: true,
+  default: () => mockSocketConnected,
 }))
 
 const mockMessages: ChatMessage[] = [
@@ -157,6 +171,9 @@ describe('MessageItemList', () => {
       return { data: undefined, loading: false, error: undefined, refetch: jest.fn() }
     })
 
+    mockSocketConnected = false
+    mockMarkRead.mockResolvedValue({})
+
     // Mock useSubscription
     mockUseSubscription.mockReturnValue({
       data: undefined,
@@ -246,24 +263,6 @@ describe('MessageItemList', () => {
     })
   })
 
-  it('polls for messages every 3 seconds', async () => {
-    jest.useFakeTimers()
-
-    render(<MessageItemList room={mockRoom} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('message-item-msg1')).toBeInTheDocument()
-    })
-
-    // Advance timers to trigger polling
-    jest.advanceTimersByTime(3000)
-
-    // Component should still be rendered
-    expect(screen.getByTestId('message-item-msg1')).toBeInTheDocument()
-
-    jest.useRealTimers()
-  })
-
   it('skips polling when no room is provided', () => {
     jest.useFakeTimers()
 
@@ -309,5 +308,145 @@ describe('MessageItemList', () => {
     // Component should still render messages even if subscription has errors
     expect(screen.getByText('First message')).toBeInTheDocument()
   })
-})
 
+  describe('requests while idle (#625)', () => {
+    const messagesQueryOptions = () =>
+      mockUseQuery.mock.calls.filter(([query]) => query === GET_ROOM_MESSAGES).at(-1)?.[1]
+
+    const setVisibility = (state: 'visible' | 'hidden') => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: state })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+
+    const withMessages = (messages: ChatMessage[], refetch = jest.fn().mockResolvedValue({})) => {
+      mockUseQuery.mockImplementation((query) =>
+        query === GET_ROOM_MESSAGES
+          ? { data: { messages }, loading: false, error: undefined, refetch }
+          : { data: undefined, loading: false, error: undefined, refetch: jest.fn() }
+      )
+      return refetch
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('polls every 3 seconds while the subscription socket is down', () => {
+      mockSocketConnected = false
+      render(<MessageItemList room={mockRoom} />)
+
+      expect(messagesQueryOptions()).toEqual(expect.objectContaining({ pollInterval: 3000 }))
+    })
+
+    it('stops polling while the subscription socket is connected', () => {
+      mockSocketConnected = true
+      render(<MessageItemList room={mockRoom} />)
+
+      expect(messagesQueryOptions()).toEqual(expect.objectContaining({ pollInterval: 0 }))
+    })
+
+    it('refetches once when the socket reconnects after a drop', () => {
+      const refetch = withMessages(mockMessages)
+      mockSocketConnected = true
+      const { rerender } = render(<MessageItemList room={mockRoom} />)
+      expect(refetch).not.toHaveBeenCalled()
+
+      mockSocketConnected = false
+      rerender(<MessageItemList room={mockRoom} />)
+      expect(refetch).not.toHaveBeenCalled()
+
+      mockSocketConnected = true
+      rerender(<MessageItemList room={mockRoom} />)
+      expect(refetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('refetches when the subscription delivers a message', () => {
+      const refetch = withMessages(mockMessages)
+      mockUseSubscription.mockReturnValue({
+        data: { message: { _id: 'msg3', messageRoomId: 'room1', userId: 'user2', text: 'Hi' } },
+        error: undefined,
+      })
+
+      render(<MessageItemList room={mockRoom} />)
+
+      expect(refetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('marks the room read once when it opens and not on a timer', async () => {
+      render(<MessageItemList room={mockRoom} />)
+
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+      })
+      expect(mockMarkRead).toHaveBeenCalledTimes(1)
+      expect(mockMarkRead).toHaveBeenCalledWith({ variables: { messageRoomId: 'room1' } })
+
+      await act(async () => {
+        jest.advanceTimersByTime(60_000)
+      })
+      expect(mockMarkRead).toHaveBeenCalledTimes(1)
+    })
+
+    it('marks the room read again when a message from someone else arrives', async () => {
+      withMessages(mockMessages)
+      const { rerender } = render(<MessageItemList room={mockRoom} />)
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+      })
+      expect(mockMarkRead).toHaveBeenCalledTimes(1)
+
+      withMessages([
+        ...mockMessages,
+        { ...mockMessages[1], _id: 'msg3', text: 'New from user2' },
+      ])
+      rerender(<MessageItemList room={mockRoom} />)
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+      })
+      expect(mockMarkRead).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not mark the room read for my own new message', async () => {
+      withMessages(mockMessages)
+      const { rerender } = render(<MessageItemList room={mockRoom} />)
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+      })
+
+      withMessages([...mockMessages, { ...mockMessages[0], _id: 'msg3', text: 'Mine' }])
+      rerender(<MessageItemList room={mockRoom} />)
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+      })
+      expect(mockMarkRead).toHaveBeenCalledTimes(1)
+    })
+
+    it('waits for the tab to be visible before marking the room read', async () => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+      render(<MessageItemList room={mockRoom} />)
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+      })
+      expect(mockMarkRead).not.toHaveBeenCalled()
+
+      await act(async () => {
+        setVisibility('visible')
+      })
+      expect(mockMarkRead).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not mark anything without a room', async () => {
+      render(<MessageItemList room={null} />)
+      await act(async () => {
+        jest.advanceTimersByTime(800)
+        setVisibility('visible')
+      })
+      expect(mockMarkRead).not.toHaveBeenCalled()
+    })
+  })
+})
