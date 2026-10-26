@@ -352,3 +352,10 @@ export interface UseAutoResizeTextareaReturn {
   /** Recompute the height, e.g. after a value is set programmatically */
   resize: () => void
 }
+
+// ============================================================================
+// Socket Status Types
+// ============================================================================
+
+/** Called when the subscription WebSocket connects or closes (#625). */
+export type SocketStatusListener = () => void
