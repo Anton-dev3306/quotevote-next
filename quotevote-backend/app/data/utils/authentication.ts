@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import { GraphQLError } from 'graphql';
@@ -5,7 +6,7 @@ import type { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { logger } from './logger';
 import { prisma } from '~/lib/prisma';
-import type { JWTPayload } from '../../types/express';
+import type { JWTPayload, PasswordResetTokenPayload } from '../../types/express';
 import { CURRENT_TERMS_HASH, CURRENT_TERMS_VERSION, isCurrentTermsVersion } from './termsPolicy';
 
 /**
@@ -95,6 +96,80 @@ export const verifyInviteSignupToken = (rawToken: string): InviteSignupTokenPayl
       extensions: { code: 'UNAUTHENTICATED' },
     });
   }
+};
+
+/** Limited-purpose JWT for password reset links only (#623). */
+export const PASSWORD_RESET_TOKEN_TYPE = 'password_reset' as const;
+
+/** Reset links expire after one hour. */
+export const PASSWORD_RESET_TOKEN_TTL_SECONDS = 60 * 60;
+
+/**
+ * Keyed fingerprint of a stored password hash. Embedding it in the reset token makes
+ * the link single-use: setting a new password changes the hash, so the old link fails.
+ * The HMAC keeps the hash itself out of the token.
+ */
+export const passwordFingerprint = (passwordHash: string | null | undefined): string =>
+  crypto
+    .createHmac('sha256', safeSecret)
+    .update(passwordHash ?? '')
+    .digest('base64url')
+    .slice(0, 22);
+
+/**
+ * Issues a one-hour password reset token for the account's current password hash.
+ * Valid only for the reset flow, never as a GraphQL session.
+ */
+export const generatePasswordResetToken = (
+  userId: string,
+  passwordHash: string | null | undefined,
+  expiresInSeconds = PASSWORD_RESET_TOKEN_TTL_SECONDS
+): string => {
+  const payload: PasswordResetTokenPayload = {
+    userId,
+    type: PASSWORD_RESET_TOKEN_TYPE,
+    pwd: passwordFingerprint(passwordHash),
+  };
+  return jwt.sign(payload, safeSecret, { expiresIn: expiresInSeconds });
+};
+
+/**
+ * Verifies a password reset token's signature, expiry and type. Callers must still
+ * check `pwd` against the account's current hash with `isPasswordResetTokenCurrent`.
+ * @throws GraphQLError when the token is missing, expired, or of another type.
+ */
+export const verifyPasswordResetToken = (rawToken: string): PasswordResetTokenPayload => {
+  const token = rawToken.startsWith('Bearer ') ? rawToken.substring(7) : rawToken;
+  try {
+    const decoded = jwt.verify(token, safeSecret) as PasswordResetTokenPayload;
+    if (decoded.type !== PASSWORD_RESET_TOKEN_TYPE || !decoded.userId || !decoded.pwd) {
+      throw new GraphQLError('Invalid password reset link', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    return decoded;
+  } catch (err: unknown) {
+    if (err instanceof GraphQLError) throw err;
+    const error = err as Error;
+    if (error.name === 'TokenExpiredError') {
+      throw new GraphQLError('Password reset link has expired', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    throw new GraphQLError('Invalid password reset link', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+};
+
+/** True while the account's password is still the one the token was issued against. */
+export const isPasswordResetTokenCurrent = (
+  payload: PasswordResetTokenPayload,
+  passwordHash: string | null | undefined
+): boolean => {
+  const expected = Buffer.from(passwordFingerprint(passwordHash));
+  const actual = Buffer.from(payload.pwd);
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 };
 
 /**
@@ -436,9 +511,10 @@ export const verifyToken = async (authToken: string): Promise<JWTPayload> => {
       type?: string;
       purpose?: string;
     };
-    // Invite-signup and refresh tokens must not authorize general GraphQL sessions.
+    // Invite-signup, password reset and refresh tokens must not authorize general GraphQL sessions.
     if (
       decoded.type === INVITE_SIGNUP_TOKEN_TYPE ||
+      decoded.type === PASSWORD_RESET_TOKEN_TYPE ||
       decoded.type === 'refresh' ||
       decoded.purpose === INVITE_SIGNUP_TOKEN_PURPOSE
     ) {

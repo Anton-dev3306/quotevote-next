@@ -251,6 +251,18 @@ export interface JWTPayload {
 }
 
 /**
+ * Payload of a password reset link token. `pwd` fingerprints the password hash
+ * the token was issued against, so the link stops working once the password changes.
+ */
+export interface PasswordResetTokenPayload {
+  userId: string;
+  type: 'password_reset';
+  pwd: string;
+  iat?: number;
+  exp?: number;
+}
+
+/**
  * Login request body
  */
 export interface LoginRequest {
