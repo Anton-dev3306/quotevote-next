@@ -1,21 +1,14 @@
 /**
  * Queries the frontend calls that had no resolver in the new backend (#623):
- * users, checkDuplicateEmail, verifyUserPasswordResetToken and userInviteRequests.
+ * users, checkDuplicateEmail and userInviteRequests. The reset link query is covered
+ * in passwordReset.test.ts.
  */
 
 import { GraphQLError } from 'graphql';
 import { userResolver } from '~/data/resolvers/userResolver';
 import { userInviteResolver } from '~/data/resolvers/userInviteResolver';
-import { verifyToken } from '~/data/utils/authentication';
 import { PUBLIC_USER_SELECT } from '~/data/utils/userPrismaMapper';
 import type { GraphQLContext } from '~/types/graphql';
-
-jest.mock('~/data/utils/authentication', () => ({
-  ...jest.requireActual('~/data/utils/authentication'),
-  verifyToken: jest.fn(),
-}));
-
-const mockVerifyToken = verifyToken as jest.MockedFunction<typeof verifyToken>;
 
 const adminId = '507f1f77bcf86cd799439011';
 const memberId = '507f1f77bcf86cd799439012';
@@ -129,88 +122,6 @@ describe('legacy user queries (#623)', () => {
       );
 
       expect(result).toEqual([]);
-    });
-  });
-
-  describe('Query.verifyUserPasswordResetToken', () => {
-    it('returns the id, username and email for a valid token', async () => {
-      const ctx = asGuest();
-      mockVerifyToken.mockResolvedValue({ userId: memberId, username: 'bob', email: 'b@x' });
-      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        id: memberId,
-        email: 'bob@example.com',
-        username: 'bob',
-        accountStatus: 'active',
-      });
-
-      const result = await userResolver.Query.verifyUserPasswordResetToken(
-        null,
-        { token: 'valid' },
-        ctx
-      );
-
-      expect(ctx.prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { id: memberId },
-        select: { id: true, email: true, username: true, accountStatus: true },
-      });
-      expect(result).toEqual({ _id: memberId, email: 'bob@example.com', username: 'bob' });
-    });
-
-    it('accepts reset links issued by the legacy server, which carry `_id`', async () => {
-      const ctx = asGuest();
-      mockVerifyToken.mockResolvedValue({ _id: memberId } as unknown as Awaited<
-        ReturnType<typeof verifyToken>
-      >);
-      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        id: memberId,
-        email: 'bob@example.com',
-        username: 'bob',
-        accountStatus: 'active',
-      });
-
-      const result = await userResolver.Query.verifyUserPasswordResetToken(
-        null,
-        { token: 'legacy' },
-        ctx
-      );
-
-      expect(result).toEqual({ _id: memberId, email: 'bob@example.com', username: 'bob' });
-    });
-
-    it('returns null for an invalid or expired token instead of an auth error', async () => {
-      const ctx = asGuest();
-      mockVerifyToken.mockRejectedValue(
-        new GraphQLError('expired', { extensions: { code: 'UNAUTHENTICATED' } })
-      );
-
-      await expect(
-        userResolver.Query.verifyUserPasswordResetToken(null, { token: 'bad' }, ctx)
-      ).resolves.toBeNull();
-      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
-    });
-
-    it('returns null for an empty token, a disabled account or a missing user', async () => {
-      await expect(
-        userResolver.Query.verifyUserPasswordResetToken(null, { token: ' ' }, asGuest())
-      ).resolves.toBeNull();
-
-      mockVerifyToken.mockResolvedValue({ userId: memberId, username: 'bob', email: 'b@x' });
-      const disabled = asGuest();
-      (disabled.prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        id: memberId,
-        email: 'bob@example.com',
-        username: 'bob',
-        accountStatus: 'disabled',
-      });
-      await expect(
-        userResolver.Query.verifyUserPasswordResetToken(null, { token: 't' }, disabled)
-      ).resolves.toBeNull();
-
-      const missing = asGuest();
-      (missing.prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
-      await expect(
-        userResolver.Query.verifyUserPasswordResetToken(null, { token: 't' }, missing)
-      ).resolves.toBeNull();
     });
   });
 

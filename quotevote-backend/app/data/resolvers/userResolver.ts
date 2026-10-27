@@ -4,7 +4,16 @@ import { Prisma, ReportStatus } from '@prisma/client';
 import type { ReportReason, ReportSeverity } from '@prisma/client';
 import { normalizeBio } from '../utils/bioValidation';
 import { toIsoDateString } from '~/data/utils/serializeDate';
-import { verifyToken } from '~/data/utils/authentication';
+import {
+  generateHashPassword,
+  generatePasswordResetToken,
+  isPasswordResetTokenCurrent,
+  verifyInviteSignupToken,
+  verifyPasswordResetToken,
+} from '~/data/utils/authentication';
+import { checkRateLimit } from '~/data/utils/rateLimiter';
+import sendGridEmail, { SENDGRID_TEMPLATE_IDS } from '~/data/utils/send-grid-mail';
+import { logger } from '~/data/utils/logger';
 import {
   PUBLIC_USER_SELECT,
   toPublicUser,
@@ -12,7 +21,6 @@ import {
 } from '~/data/utils/userPrismaMapper';
 import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
-import type { JWTPayload } from '~/types/express';
 
 /** Legacy invite codes: 1 = requested, 4 = approved (not yet signed up). */
 const UNFINISHED_INVITE_STATUSES = new Set([1, 4]);
@@ -55,6 +63,35 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Legacy invite code for an access request that hasn't been decided yet. */
 const INVITE_STATUS_REQUESTED = 1;
+/** Legacy invite code for an approved invite whose account isn't set up yet. */
+const INVITE_STATUS_APPROVED = 4;
+
+/** Reset email requests allowed per address in each window. */
+const RESET_EMAIL_LIMIT_PER_EMAIL = 3;
+const RESET_EMAIL_WINDOW_MS = 60 * 60 * 1000;
+
+/** Same rule as the reset page: 8+ characters with upper, lower and a digit. */
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+const PASSWORD_PATTERN = /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
+
+const INVALID_RESET_LINK = 'This password reset link is invalid or has already been used.';
+
+function invalidResetLink(): GraphQLError {
+  return new GraphQLError(INVALID_RESET_LINK, { extensions: { code: 'UNAUTHENTICATED' } });
+}
+
+/** Applies a rate limit, turning the limiter's error into a GraphQL error. */
+function enforceRateLimit(key: string, action: string, limit: number, windowMs: number): void {
+  try {
+    checkRateLimit(key, action, limit, windowMs);
+  } catch {
+    throw new GraphQLError('Too many requests. Please try again later.', {
+      extensions: { code: 'TOO_MANY_REQUESTS' },
+    });
+  }
+}
+
 // Same fields legacy's getBotReportedUsers selected, plus contributorBadge
 // because the admin bot list asks for it.
 const BOT_REPORTED_USER_SELECT = {
@@ -316,29 +353,162 @@ export const userResolver = {
       const token = args.token?.trim();
       if (!token) return null;
 
-      // An invalid or expired link resolves to null rather than an auth error,
+      // An invalid, expired or used link resolves to null rather than an auth error,
       // so the page shows its "link expired" state instead of signing the visitor out.
-      // Reset links from the legacy server carry `_id`; tokens from this server carry `userId`.
-      let userId: string | undefined;
+      // Two kinds of link land here: password reset links, and invite links on the
+      // signup page. Session tokens are not links and are refused.
+      let userId: string;
+      let resetPayload: ReturnType<typeof verifyPasswordResetToken> | null = null;
       try {
-        const payload = (await verifyToken(token)) as JWTPayload & { _id?: string };
-        userId = payload.userId ?? payload._id;
+        resetPayload = verifyPasswordResetToken(token);
+        userId = resetPayload.userId;
       } catch {
-        return null;
+        try {
+          userId = verifyInviteSignupToken(token).userId;
+        } catch {
+          return null;
+        }
       }
-      if (!userId || !isObjectId(userId)) return null;
+      if (!isObjectId(userId)) return null;
 
       const user = await context.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, username: true, accountStatus: true },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          accountStatus: true,
+          password: true,
+          status: true,
+        },
       });
       if (!user || user.accountStatus === 'disabled') return null;
+
+      if (resetPayload) {
+        if (!isPasswordResetTokenCurrent(resetPayload, user.password)) return null;
+      } else if (user.password || user.status !== INVITE_STATUS_APPROVED) {
+        // Invite links only work until the account is set up.
+        return null;
+      }
 
       return { _id: user.id, email: user.email, username: user.username };
     },
   },
 
   Mutation: {
+    sendPasswordResetEmail: async (
+      _parent: unknown,
+      args: { email: string },
+      context: GraphQLContext
+    ): Promise<boolean> => {
+      const email = args.email?.trim() ?? '';
+      if (!EMAIL_PATTERN.test(email)) {
+        throw new GraphQLError('Invalid email format', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      // Per address only: the server doesn't trust proxy headers yet, so behind a
+      // proxy every request would share one IP and a per-IP limit would apply site-wide.
+      enforceRateLimit(
+        `email:${email.toLowerCase()}`,
+        'passwordResetEmail',
+        RESET_EMAIL_LIMIT_PER_EMAIL,
+        RESET_EMAIL_WINDOW_MS
+      );
+
+      const user = await context.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+        select: { id: true, email: true, username: true, password: true, accountStatus: true },
+      });
+
+      // Only active accounts with a password get a link: an approved invite sets its
+      // password through its signup link instead. The response is the same either way,
+      // so this can't be used to find out which addresses have accounts.
+      if (user?.password && user.accountStatus !== 'disabled') {
+        const token = generatePasswordResetToken(user.id, user.password);
+        const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+        const resetUrl =
+          `${clientUrl}/auths/password-reset?token=${encodeURIComponent(token)}` +
+          `&username=${encodeURIComponent(user.username)}`;
+
+        // Not awaited, so a known address doesn't answer noticeably slower than an unknown one.
+        void sendGridEmail({
+          to: user.email,
+          templateId: SENDGRID_TEMPLATE_IDS.PASSWORD_RESET,
+          dynamicTemplateData: { change_password_url: resetUrl },
+        })
+          .then((result) => {
+            if (!result.success) {
+              logger.warn('Password reset email was not sent', { error: result.error });
+            }
+          })
+          .catch((err: unknown) => {
+            logger.warn('Password reset email error', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+      }
+
+      return true;
+    },
+
+    updateUserPassword: async (
+      _parent: unknown,
+      args: { username?: string | null; password?: string | null; token?: string | null },
+      context: GraphQLContext
+    ): Promise<boolean> => {
+      const token = args.token?.trim();
+      const password = args.password ?? '';
+      if (!token) throw invalidResetLink();
+
+      if (
+        password.length < PASSWORD_MIN_LENGTH ||
+        password.length > PASSWORD_MAX_LENGTH ||
+        !PASSWORD_PATTERN.test(password)
+      ) {
+        throw new GraphQLError(
+          'Password must be 8 to 128 characters and include an uppercase letter, a lowercase letter and a number.',
+          { extensions: { code: 'BAD_USER_INPUT' } }
+        );
+      }
+
+      let payload: ReturnType<typeof verifyPasswordResetToken>;
+      try {
+        payload = verifyPasswordResetToken(token);
+      } catch {
+        throw invalidResetLink();
+      }
+      if (!isObjectId(payload.userId)) throw invalidResetLink();
+
+      const user = await context.prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: { id: true, username: true, password: true, accountStatus: true },
+      });
+      if (
+        !user ||
+        user.accountStatus === 'disabled' ||
+        !isPasswordResetTokenCurrent(payload, user.password)
+      ) {
+        throw invalidResetLink();
+      }
+
+      // The link carries the username for display; if one is sent it must be the token's account.
+      const username = args.username?.trim();
+      if (username && username !== user.username) throw invalidResetLink();
+
+      // Updating by id only: the token decides the account, never the username argument.
+      // Selecting just the id keeps Prisma from reading back fields that existing
+      // accounts don't have, such as `createdAt`.
+      await context.prisma.user.update({
+        where: { id: user.id },
+        data: { password: await generateHashPassword(password) },
+        select: { id: true },
+      });
+
+      return true;
+    },
+
     updateUser: async (
       _parent: unknown,
       args: { user: UpdateUserInput },
