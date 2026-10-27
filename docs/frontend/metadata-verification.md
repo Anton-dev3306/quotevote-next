@@ -1,100 +1,97 @@
-# Next.js Metadata Verification (Issue #92)
+# Next.js Metadata Verification (Issues #92 and #93)
 
-Verification of route-level metadata after the `react-helmet-async` → Next.js Metadata API migration.
+Route-level metadata after the `react-helmet-async` → Next.js Metadata API migration. #93 added the metadata; this document records the #92 verification of the result.
 
-- **Commit verified:** `f9480df` (main)
-- **Method:** source inventory of every `page.tsx` / `layout.tsx` under `quotevote-frontend/src/app`, `pnpm build`, then `pnpm start` and inspection of the server-rendered `<head>` with `curl`.
+- **Base commit:** `f9480df` (main)
+- **Method:** source inventory of every `page.tsx` / `layout.tsx` under `quotevote-frontend/src/app`; `pnpm build`; `pnpm start` with `NEXT_PUBLIC_SITE_URL=http://localhost:3100` and the API at `https://api.quote.vote`; server-rendered `<head>` inspected with `curl` using a social-crawler user agent (`Twitterbot/1.0`).
 
 ## Summary
 
-| Acceptance criterion | Result |
-| --- | --- |
-| No active `react-helmet-async` usage | ✅ Pass — not in `package.json` or lockfile; no imports |
-| Root metadata renders through Metadata API | ✅ Pass — `src/app/layout.tsx` exports `metadata` |
-| Important public routes have intentional titles and descriptions | ⚠️ Partial — all public static routes have titles; 8 inherit the root description |
-| Dynamic public content has entity-specific metadata | ⚠️ Partial — profile yes; post detail no |
-| Canonical, Open Graph and Twitter tags are valid | ❌ Fail — see findings 1–3 |
-| Production build completes without metadata errors | ✅ Pass — no metadata warnings |
-
-## Route inventory
-
-**Public — static**
-
-| Route | Title | Own description | Own OG/Twitter |
-| --- | --- | --- | --- |
-| `/` | ✅ | ✅ | ✅ |
-| `/about` | ✅ | ✅ | ❌ inherits root |
-| `/plan` | ✅ | ✅ | ❌ inherits root |
-| `/terms` | ✅ | ❌ | ❌ inherits root |
-| `/code-of-conduct` | ✅ | ❌ | ❌ inherits root |
-| `/contributing` | ✅ | ❌ | ❌ inherits root |
-| `/auths/login` | ✅ | ❌ | ❌ inherits root |
-| `/auths/signup` | ✅ | ❌ | ❌ inherits root |
-| `/auths/request-access` | ✅ | ❌ | ❌ inherits root |
-| `/auths/forgot-password` | ✅ | ❌ | ❌ inherits root |
-| `/auths/password-reset` | ✅ | ❌ | ❌ inherits root |
-| `/auths/investor-thanks` | ✅ | ✅ | ❌ inherits root |
-
-**Public — dynamic**
-
-| Route | Metadata | Notes |
+| Acceptance criterion | Before | After |
 | --- | --- | --- |
-| `/profile/[username]` | `generateMetadata()` | Title/description use the username; OG/Twitter inherit root |
-| `/post/[group]/[title]/[postId]` | none | Page is `'use client'`, so it cannot export metadata; renders the generic root title |
-| `/profile/[username]/followers`, `/following` | none | `'use client'` pages; inherit root |
+| No active `react-helmet-async` usage | ✅ | ✅ Not in `package.json` or lockfile; no imports |
+| Root metadata renders through the Metadata API | ✅ | ✅ `src/app/layout.tsx` also sets `metadataBase` |
+| Public routes have intentional titles and descriptions | ⚠️ 8 inherited the root description | ✅ Every page has its own title and description (except `terms` and `signup`, see below) |
+| Dynamic content has entity-specific metadata | ⚠️ Profile title only; post none | ✅ Post title and excerpt; profile name and handle |
+| Canonical, Open Graph and Twitter tags are valid | ❌ Sub-pages inherited the home page's `og:title`/`og:url`; no canonical; no image | ✅ Per-page canonical, `og:*` and `twitter:*` tags, plus a 1200×630 image |
+| Production build without metadata errors | ✅ | ✅ |
 
-**Authenticated** (middleware redirects to `/auths/login` when signed out)
+## What changed
 
-| Route | Metadata |
-| --- | --- |
-| `/post`, `/profile`, `/settings`, `/notifications`, `/manage-invites`, `/control-panel`, `/profile/[username]/edit` | static `metadata` (title + description) |
-| `/profile/[username]/avatar` | none (`'use client'`) |
+- **Shared helper** `src/lib/seo/metadata.ts`: `buildPageMetadata()` sets title, description, `alternates.canonical`, `openGraph` (url, siteName, type, image) and `twitter` together, so a page can no longer override one and inherit stale values for the rest. `noIndex` adds `robots: noindex, nofollow`.
+- **Site URL:** `metadataBase` comes from `NEXT_PUBLIC_SITE_URL`, falling back to `VERCEL_PROJECT_PRODUCTION_URL` and then `http://localhost:3000`. The hardcoded `https://quote.vote` is removed, since that domain still serves the legacy client.
+- **Post detail:** the client component moved to `PostPageContent.tsx`. The new server `page.tsx` has `generateMetadata()`, which loads the post's title, text, URL, created date and author through `src/lib/seo/serverData.ts`.
+- **Profile:** `generateMetadata()` loads the public `user(username)` record and uses the display name and handle.
+- **Server data** (`src/lib/seo/serverData.ts`): plain `fetch` against the public GraphQL API, cached with React `cache()` and revalidated every 5 minutes. Requests time out after 3 s (10 s for the sitemap), and any failure falls back to generic metadata, so a slow or down API never breaks a page.
+- **Social image:** `src/app/opengraph-image.tsx` generates a 1200×630 PNG, used for both `og:image` and `twitter:image`.
+- **robots.txt and sitemap.xml:** `public/robots.txt` and `public/sitemap.xml` are replaced by `src/app/robots.ts` and `src/app/sitemap.ts`, both built from the site URL. The sitemap lists static pages, public posts and the profiles of their authors.
+- **Indexing:** signed-in, token and utility pages are `noindex`.
 
-**Utility / redirect** — no metadata, low priority
+## Route inventory (after)
 
-| Route | Notes |
-| --- | --- |
-| `/dashboard/[[...path]]` | Server `redirect()` only; metadata not needed |
-| `/logout` | Client redirect |
-| `/error`, `/auths/error-page`, `/unauth` | Render root title; candidates for `robots: noindex` |
+| Route | Source | Indexed | Notes |
+| --- | --- | --- | --- |
+| `/` | static | ✅ | |
+| `/about`, `/plan`, `/code-of-conduct`, `/contributing` | static | ✅ | |
+| `/auths/login`, `/auths/request-access`, `/auths/forgot-password` | static | ✅ | |
+| `/post` | static | ✅ | Guest-readable feed |
+| `/post/[group]/[title]/[postId]` | `generateMetadata` | ✅ | Post title, excerpt, `og:type=article`, `article:published_time` |
+| `/profile/[username]` | `generateMetadata` | ✅ | Name and handle, `og:type=profile` |
+| `/profile/[username]/followers`, `/following` | `generateMetadata` | ✅ | Converted from client to server pages |
+| `/auths/password-reset`, `/auths/investor-thanks` | static | noindex | Token / thank-you pages |
+| `/settings`, `/notifications`, `/manage-invites`, `/control-panel`, `/profile` | static | noindex | Signed-in |
+| `/profile/[username]/edit` | `generateMetadata` | noindex | Signed-in |
+| `/profile/[username]/avatar` | `layout.tsx` | noindex | Page is a large client component, so metadata lives in a layout |
+| `/error`, `/auths/error-page`, `/unauth`, `/logout` | static | noindex | |
+| `/dashboard/[[...path]]` | — | — | Server `redirect()` only; no page is rendered |
+| `/terms`, `/auths/signup` | unchanged | ✅ | Left alone until #568 and #569 merge; they still inherit root OG tags |
 
 ## Rendered `<head>` checks
 
-From `pnpm start` with no backend running:
+Public routes (`Twitterbot/1.0` user agent):
 
-| Route | `<title>` | `og:title` | `og:url` |
+| Route | `<title>` | `og:url` / canonical | `og:type` |
 | --- | --- | --- | --- |
-| `/` | Quote.Vote – Share Ideas. Vote on What Matters. | same | `https://quote.vote` |
-| `/about` | About — Quote.Vote | **Quote.Vote** | **`https://quote.vote`** |
-| `/terms` | Terms of Service - Quote.Vote | **Quote.Vote** | **`https://quote.vote`** |
-| `/auths/login` | Sign In — Quote.Vote | **Quote.Vote** | **`https://quote.vote`** |
-| `/profile/testuser` | @testuser — Quote.Vote | **Quote.Vote** | **`https://quote.vote`** |
-| `/post/general/hello/abc123` | **Quote.Vote - Text-First Platform…** | **Quote.Vote** | **`https://quote.vote`** |
-| `/settings` | 307 → `/auths/login?callbackUrl=%2Fsettings` | — | — |
+| `/` | Quote.Vote – Share Ideas. Vote on What Matters. | `/` | website |
+| `/about` | About — Quote.Vote | `/about` | website |
+| `/auths/login` | Sign In — Quote.Vote | `/auths/login` | website |
+| `/post/quotevote/quote.vote-is-open-source/6acc…6bdd` | Quote.Vote is Open Source — Quote.Vote | same path | article |
+| `/post/x/y/000000000000000000000000` (missing post) | Post — Quote.Vote | same path | article |
+| `/profile/louisgirifalco` | Louis Girifalco (@louisgirifalco) — Quote.Vote | `/profile/louisgirifalco` | profile |
+| `/profile/sevan` (empty display name) | @sevan — Quote.Vote | `/profile/sevan` | profile |
+| `/profile/louisgirifalco/followers` | Followers · @louisgirifalco — Quote.Vote | `/profile/louisgirifalco/followers` | website |
 
-No route rendered `<link rel="canonical">`, `og:image`, or `twitter:image`.
+Each of these also rendered a description, `og:title`, `og:description`, `og:site_name`, `og:image`, `twitter:card=summary_large_image`, `twitter:title` and `twitter:image`. The post page's description is the first 160 characters of the post text, ending on a word boundary.
 
-## Findings
+Signed-in routes, with a local session cookie (structural check only, no `JWT_SECRET`):
 
-1. **OG/Twitter tags are wrong on every route except `/`.** Next.js replaces nested `openGraph`/`twitter` objects rather than merging them, so pages that set only `title`/`description` keep the root's `og:title="Quote.Vote"`, `og:url="https://quote.vote"` and root `og:description`. Shared links for `/about`, profiles, etc. preview as the home page.
-2. **No canonical URLs.** No `metadataBase` or `alternates.canonical` is set anywhere.
-3. **No social image.** `twitter:card` is `summary_large_image` but no `og:image`/`twitter:image` exists, and there is no `opengraph-image` file in `src/app`.
-4. **Post detail has no entity metadata.** `post/[group]/[title]/[postId]/page.tsx` is a client component and there is no server-side GraphQL fetch helper, so adding `generateMetadata()` needs a server wrapper plus a server data fetch.
-5. **Eight public routes inherit the root description** (`/terms`, `/code-of-conduct`, `/contributing`, and the five `/auths/*` pages listed above).
-6. **Title separators are inconsistent** (`—`, `-`, `–`). A `title.template` in the root layout would standardise them.
-7. **Unused legacy SEO helpers.** `src/components/common/SEOHead.tsx` and `src/hooks/useSEOHead.ts` (DOM-based replacements for Helmet) are not used by any route — only by their own tests and a barrel export.
+| Route | `<title>` | robots |
+| --- | --- | --- |
+| `/settings` | Settings — Quote.Vote | noindex, nofollow |
+| `/notifications` | Notifications — Quote.Vote | noindex, nofollow |
+| `/manage-invites` | Manage Invites — Quote.Vote | noindex, nofollow |
+| `/profile` | Your Profile — Quote.Vote | noindex, nofollow |
+| `/profile/louisgirifalco/edit` | Edit profile — Quote.Vote | noindex, nofollow |
+| `/profile/louisgirifalco/avatar` | Edit avatar — Quote.Vote | noindex, nofollow |
+| `/control-panel` | Control Panel — Quote.Vote | noindex, nofollow |
+
+Other checks:
+
+- `GET /opengraph-image` → `200 image/png`, 1200×630.
+- `GET /robots.txt` → allows `/`, disallows private areas, and points to `<site>/sitemap.xml`.
+- `GET /sitemap.xml` → 160 URLs: 8 static pages, 126 posts and 26 profiles, all on the site's own origin.
+- **Streaming metadata:** Twitterbot, facebookexternalhit and Slackbot receive post metadata inside `<head>`. A regular browser user agent receives it streamed after the initial HTML, which is standard Next.js 16 behavior and doesn't affect link previews.
 
 ## Build result
 
-`pnpm build` (Next.js 16.1.1): exit 0, compiled and type-checked successfully, 16 static pages generated, no metadata-related warnings. The only warning was the Node engine mismatch on the verifying machine (Node 22 vs `engines.node: 24.x`).
+`pnpm build` (Next.js 16.1.1): exit 0, compiled and type-checked, 19 static pages generated (including `/opengraph-image`, `/robots.txt` and `/sitemap.xml`), no metadata warnings. `pnpm lint`: 0 errors (3 existing warnings in unrelated files). `pnpm test`: 200 suites, 2302 tests passing.
 
-## Suggested follow-up issues
+The only build warning was the Node engine mismatch on the verifying machine (Node 22 vs `engines.node: 24.x`).
 
-Per the scope note, these can be opened as smaller route-specific issues:
+## Still to do
 
-1. Set `metadataBase` and a `title.template` in the root layout; give each public page its own `openGraph`/`twitter` title, description and `url` plus `alternates.canonical` (findings 1, 2, 5, 6).
-2. Add a default social image (`src/app/opengraph-image.*` or `public/` asset) (finding 3).
-3. Add server-side `generateMetadata()` for post detail with post title/excerpt (finding 4).
-4. Extend profile `generateMetadata()` with OG/Twitter fields and canonical URL (finding 1).
-5. Add `robots: { index: false }` to error, unauth and authenticated routes.
-6. Remove unused `SEOHead` / `useSEOHead` and their tests (finding 7).
+- **External preview tools** (opengraph.xyz, LinkedIn Post Inspector, X card validator) need a public URL. Run them against the Vercel preview for the PR once a maintainer authorizes the deployment.
+- **Google Rich Results Test** for a post and a profile, after #94 (JSON-LD) lands.
+- **`/terms` and `/auths/signup`** should switch to `buildPageMetadata()` after #568 and #569 merge.
+- **Production `NEXT_PUBLIC_SITE_URL`:** set it to the frontend's production domain in the hosting environment. Without it, Vercel deployments fall back to the project's production domain.
+- **Unused legacy helpers:** `src/components/common/SEOHead.tsx` and `src/hooks/useSEOHead.ts` are only used by their own tests and could be removed in a separate cleanup.
