@@ -235,6 +235,23 @@ export async function searchUsersViaApi(
   return data.searchUser ?? [];
 }
 
+export async function findUserByUsernameViaApi(
+  token: string,
+  username: string
+): Promise<SearchUserResult> {
+  const trimmed = username.trim();
+  const candidates = await searchUsersViaApi(token, trimmed);
+  const match = candidates.find(
+    (user) => user.username.toLowerCase() === trimmed.toLowerCase()
+  );
+
+  if (!match) {
+    throw new Error(`No user found with username "${trimmed}"`);
+  }
+
+  return match;
+}
+
 export async function createMessageViaApi(
   token: string,
   message: {
@@ -266,4 +283,23 @@ export async function createMessageViaApi(
   }
 
   return data.createMessage;
+}
+
+export async function deleteMessageViaApi(messageId: string, token: string): Promise<void> {
+  try {
+    await graphqlRequest<{ deleteMessage?: { _id: string } }>(
+      token,
+      `
+        mutation deleteMessage($messageId: String!) {
+          deleteMessage(messageId: $messageId) {
+            _id
+          }
+        }
+      `,
+      { messageId }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`deleteMessage cleanup warning: ${message}`);
+  }
 }

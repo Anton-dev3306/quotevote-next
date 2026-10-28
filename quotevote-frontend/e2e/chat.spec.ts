@@ -8,18 +8,22 @@
  * Covers Messages search after #531: plain keywords, @person, #tag,
  * empty state, and opening a result. Uses real API seed data — no login
  * or GraphQL mocks.
+ *
+ * @person requires E2E_PEER_USERNAME (a dedicated second account). When unset,
+ * that step is skipped so keyword/#tag coverage still runs.
  */
 import { test, expect } from '@playwright/test';
 import {
   createMessageViaApi,
   createPostViaApi,
+  deleteMessageViaApi,
   deletePostViaApi,
   findGroupIdByTitle,
+  findUserByUsernameViaApi,
   loginViaApi,
-  searchUsersViaApi,
   type SearchUserResult,
 } from './helpers/api';
-import { AUTHOR_PASSWORD, AUTHOR_USERNAME } from './helpers/auth';
+import { AUTHOR_PASSWORD, AUTHOR_USERNAME, PEER_USERNAME } from './helpers/auth';
 import { atHandleFromPerson, openMessagesPanel, selectMessagesTab } from './helpers/chat';
 import { PUBLIC_TAG_NAME } from './helpers/post-composer';
 import { tagToken } from '../src/lib/utils/conversationSearch';
@@ -30,10 +34,11 @@ test.describe('E2E-CHAT-008: Chat Search', () => {
   let authToken: string;
   let authorUserId: string;
   let createdPostId: string | null = null;
+  let dmMessageId: string | null = null;
   let postTitle: string;
   let messageKeyword: string;
-  let otherUser: SearchUserResult;
-  let atQuery: string;
+  let otherUser: SearchUserResult | null = null;
+  let atQuery: string | null = null;
   let tagQuery: string;
 
   test.beforeAll(async () => {
@@ -46,20 +51,22 @@ test.describe('E2E-CHAT-008: Chat Search', () => {
     messageKeyword = `solarpanels${unique.replace(/[^a-z0-9]/gi, '')}`;
     tagQuery = `#${tagToken(PUBLIC_TAG_NAME)}`;
 
-    const candidates = await searchUsersViaApi(authToken, 'a');
-    const peer = candidates.find((user) => user._id !== authorUserId && user.username);
-    if (!peer) {
-      throw new Error('Need another platform user to seed a DM for @person search');
-    }
-    otherUser = peer;
-    atQuery = atHandleFromPerson(peer);
+    if (PEER_USERNAME) {
+      const peer = await findUserByUsernameViaApi(authToken, PEER_USERNAME);
+      if (peer._id === authorUserId) {
+        throw new Error('E2E_PEER_USERNAME must be a different account than E2E_AUTHOR_USERNAME');
+      }
+      otherUser = peer;
+      atQuery = atHandleFromPerson(peer);
 
-    await createMessageViaApi(authToken, {
-      type: 'USER',
-      componentId: peer._id,
-      title: peer.name || peer.username,
-      text: `E2E DM ping ${unique}`,
-    });
+      const dm = await createMessageViaApi(authToken, {
+        type: 'USER',
+        componentId: peer._id,
+        title: peer.name || peer.username,
+        text: `E2E DM ping ${unique}`,
+      });
+      dmMessageId = dm._id;
+    }
 
     const groupId = await findGroupIdByTitle(authToken, PUBLIC_TAG_NAME);
     const post = await createPostViaApi(authToken, {
@@ -79,6 +86,10 @@ test.describe('E2E-CHAT-008: Chat Search', () => {
   });
 
   test.afterAll(async () => {
+    if (dmMessageId && authToken) {
+      await deleteMessageViaApi(dmMessageId, authToken);
+      dmMessageId = null;
+    }
     if (createdPostId && authToken) {
       await deletePostViaApi(createdPostId, authToken);
       createdPostId = null;
@@ -95,17 +106,19 @@ test.describe('E2E-CHAT-008: Chat Search', () => {
     const searchInput = chatPage.getByTestId('chat-search-input');
     await expect(searchInput).toBeVisible();
 
-    // @person — Chats tab (DM title is the other person's name)
-    await selectMessagesTab(page, 'Chats');
-    await searchInput.fill(atQuery);
+    // @person — Chats tab (requires E2E_PEER_USERNAME)
+    if (otherUser && atQuery) {
+      await selectMessagesTab(page, 'Chats');
+      await searchInput.fill(atQuery);
 
-    const peerLabel = otherUser.name || otherUser.username;
-    await expect(
-      chatPage.getByTestId('chat-search-result').filter({ hasText: peerLabel }).first()
-    ).toBeVisible({ timeout: 30_000 });
+      const peerLabel = otherUser.name || otherUser.username;
+      await expect(
+        chatPage.getByTestId('chat-search-result').filter({ hasText: peerLabel }).first()
+      ).toBeVisible({ timeout: 30_000 });
 
-    await chatPage.getByRole('button', { name: /clear search/i }).click();
-    await expect(searchInput).toHaveValue('');
+      await chatPage.getByRole('button', { name: /clear search/i }).click();
+      await expect(searchInput).toHaveValue('');
+    }
 
     // Keyword from a discussion message — Discussions tab
     await selectMessagesTab(page, 'Discussions');
@@ -130,7 +143,7 @@ test.describe('E2E-CHAT-008: Chat Search', () => {
     await expect(emptyState).toBeVisible();
     await expect(emptyState).toContainText(/no discussions match/i);
 
-    // Open a keyword result and confirm message context
+    // Open a keyword result and confirm the conversation header (not just the list subtitle)
     await searchInput.fill(messageKeyword);
     await expect(
       chatPage.getByTestId('chat-search-result').filter({ hasText: postTitle }).first()
@@ -142,9 +155,10 @@ test.describe('E2E-CHAT-008: Chat Search', () => {
       .first()
       .click();
 
-    await expect(page.getByText(messageKeyword, { exact: false }).first()).toBeVisible({
+    await expect(chatPage.getByRole('link', { name: `View post: ${postTitle}` })).toBeVisible({
       timeout: 30_000,
     });
+    await expect(chatPage.getByText(messageKeyword, { exact: false }).first()).toBeVisible();
     await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0);
   });
 });
