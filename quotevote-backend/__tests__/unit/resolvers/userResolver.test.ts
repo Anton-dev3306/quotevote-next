@@ -547,6 +547,7 @@ describe('userResolver', () => {
           botReports: { increment: 1 },
           lastBotReportDate: expect.any(Date),
         },
+        select: { id: true },
       });
 
       expect(result).toEqual({

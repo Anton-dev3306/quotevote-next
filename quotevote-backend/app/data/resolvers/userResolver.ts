@@ -857,6 +857,8 @@ export const userResolver = {
           botReports: { increment: 1 },
           lastBotReportDate: new Date(),
         },
+        // Legacy accounts have no createdAt, so don't read the whole record back.
+        select: { id: true },
       });
 
       return {
