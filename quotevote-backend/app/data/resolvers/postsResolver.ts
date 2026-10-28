@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { POST_RECORD_SELECT } from '~/data/utils/postPrismaMapper';
 import { parseSearchQuery } from '../utils/parseSearchQuery';
 import { attachPostRelations } from './utils/posts';
-import { isObjectId } from './utils/common';
+import { escapeRegExp, isObjectId } from './utils/common';
 import type { GraphQLContext, PostQueryArgs } from '~/types/graphql';
 import type * as Common from '~/types/common';
 
@@ -133,10 +133,6 @@ async function buildPostQuery(
   }
 
   return { where, orderBy, earlyEmpty: false, hashtags };
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** Prisma `contains` cannot express `#tag\\b`, so apply the boundary after the query. */

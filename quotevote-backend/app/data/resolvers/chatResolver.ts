@@ -5,6 +5,7 @@ import type { MessageSearchResult } from '~/data/types/MessageSearch';
 import { getReadableMessageRoom } from './utils/messages';
 import { isLive } from '~/data/resolvers/utils/batchLoad';
 import { MESSAGE_RECORD_SELECT, toMessageEntity } from '~/data/resolvers/utils/commentsQuotes';
+import { escapeRegExp } from '~/data/resolvers/utils/common';
 
 import {
   MESSAGE_SEARCH_DEFAULT_LIMIT,
@@ -173,7 +174,9 @@ export const chatResolver = {
       const rows = await context.prisma.message.findMany({
         where: {
           messageRoomId: { in: rooms.map((room) => room.id) },
-          text: { contains: text, mode: 'insensitive' },
+          text: { contains: escapeRegExp(text), mode: 'insensitive' },
+          // Also matches legacy messages that have no `deleted` field.
+          deleted: { not: true },
           ...(cursor
             ? {
                 OR: [
@@ -192,9 +195,8 @@ export const chatResolver = {
       const lastRead = page[page.length - 1];
       const nextCursor =
         rows.length > pageSize ? encodeSearchCursor(lastRead.created, lastRead.id) : null;
-      const live = page.filter(isLive);
 
-      const authorIds = [...new Set(live.map((message) => message.userId))];
+      const authorIds = [...new Set(page.map((message) => message.userId))];
       const authors = authorIds.length
         ? await context.prisma.user.findMany({
             where: { id: { in: authorIds } },
@@ -204,7 +206,7 @@ export const chatResolver = {
       const authorsById = new Map(authors.map((u) => [u.id, toPublicUser(u as PrismaUserRecord)]));
 
       return {
-        results: live.map((message) => ({
+        results: page.map((message) => ({
           _id: message.id,
           messageRoomId: message.messageRoomId,
           created: message.created,
@@ -234,6 +236,8 @@ export const chatResolver = {
     ): Promise<Common.Message[]> => {
       const room = await getReadableMessageRoom(context.prisma, parent._id, context.userId);
       if (!room) return [];
+      // Legacy messages have no createdAt/updatedAt and may lack `deleted`, so read
+      // the safe columns and check the flag in code.
       const messages = await context.prisma.message.findMany({
         where: { messageRoomId: parent._id },
         orderBy: { created: 'asc' },

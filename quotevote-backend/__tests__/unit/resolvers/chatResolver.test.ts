@@ -398,11 +398,14 @@ describe('chatResolver.Query.searchMessages', () => {
       where: {
         messageRoomId: { in: [roomId] },
         text: { contains: 'town hall', mode: 'insensitive' },
+        deleted: { not: true },
       },
       orderBy: [{ created: 'desc' }, { id: 'desc' }],
       take: 21,
-      select: expect.objectContaining({ text: true, deleted: true }),
+      select: expect.objectContaining({ text: true }),
     });
+    const { select } = context.prisma.message.findMany.mock.calls[0][0];
+    expect(select).not.toHaveProperty('deleted');
   });
 
   it('caps the page size', async () => {
@@ -447,12 +450,12 @@ describe('chatResolver.Query.searchMessages', () => {
     expect(result.nextCursor).toBe(`${date.getTime()}_${ids[1]}`);
   });
 
-  it('skips deleted messages, keeps legacy rows without the flag, and still advances', async () => {
+  it('filters deleted messages in the query so pages stay full', async () => {
     const context = createContext();
     context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
     context.prisma.message.findMany.mockResolvedValue([
-      row({ id: ids[0], deleted: undefined }),
-      row({ id: ids[1], deleted: true }),
+      row({ id: ids[0] }),
+      row({ id: ids[1] }),
       row({ id: ids[2] }),
     ]);
     context.prisma.user.findMany.mockResolvedValue([
@@ -461,7 +464,13 @@ describe('chatResolver.Query.searchMessages', () => {
 
     const result = await search(context, { text: 'hall', limit: 2 });
 
-    expect(result.results.map((hit) => hit._id)).toEqual([ids[0]]);
+    expect(context.prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+        where: expect.objectContaining({ deleted: { not: true } }),
+      })
+    );
+    expect(result.results).toHaveLength(2);
     expect(result.nextCursor).toBe(`${date.getTime()}_${ids[1]}`);
   });
 
@@ -491,7 +500,12 @@ describe('chatResolver.Query.searchMessages', () => {
     expect(result.results[1].user).toBeNull();
   });
 
-  it.each(['.*', '(', 'a+b?', '[x'])('treats %s as plain text', async (term) => {
+  it.each([
+    ['.*', '\\.\\*'],
+    ['(', '\\('],
+    ['a+b?', 'a\\+b\\?'],
+    ['[x', '\\[x'],
+  ])('escapes %s before it reaches contains', async (term, escaped) => {
     const context = createContext();
     context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
     context.prisma.message.findMany.mockResolvedValue([row({ text: `price is 5 ${term} today` })]);
@@ -503,7 +517,7 @@ describe('chatResolver.Query.searchMessages', () => {
 
     expect(context.prisma.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ text: { contains: term, mode: 'insensitive' } }),
+        where: expect.objectContaining({ text: { contains: escaped, mode: 'insensitive' } }),
       })
     );
     expect(result.results[0].snippet).toContain(term);

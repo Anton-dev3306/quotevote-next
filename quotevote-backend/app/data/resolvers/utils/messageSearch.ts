@@ -6,15 +6,14 @@ export const MESSAGE_SEARCH_MAX_TEXT_LENGTH = 200;
 
 const SNIPPET_RADIUS = 60;
 
-// Only what a search hit needs; `deleted` is read so it can be checked in code
-// (legacy messages may lack the field).
+// Only what a search hit needs. Deleted messages are filtered in the query
+// (`deleted: { not: true }`), which also keeps legacy messages without the flag.
 export const MESSAGE_SEARCH_SELECT = {
   id: true,
   messageRoomId: true,
   userId: true,
   text: true,
   created: true,
-  deleted: true,
 } as const satisfies Prisma.MessageSelect;
 
 /**
