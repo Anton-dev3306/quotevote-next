@@ -338,7 +338,7 @@ describe('chatResolver.Query.searchMessages', () => {
   const search = (
     context: ReturnType<typeof createContext>,
     args: { text: string; limit?: number | null; cursor?: string | null }
-  ) => (chatResolver.Query as any).searchMessages({}, args, context as never);
+  ) => chatResolver.Query.searchMessages({}, args, context as never);
 
   it('rejects a guest without reading anything', async () => {
     const context = { ...createContext(), userId: null };
