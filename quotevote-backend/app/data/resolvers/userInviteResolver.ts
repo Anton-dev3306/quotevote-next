@@ -298,9 +298,12 @@ export const userInviteResolver = {
           });
         }
 
+        // Select only id: Prisma reads the record back after the update, and
+        // legacy accounts have no createdAt, which would fail that read.
         await context.prisma.user.update({
           where: { id: invitedUser.id },
           data: { status: INVITE_STATUS_APPROVED },
+          select: { id: true },
         });
 
         const inviteToken = generateInviteSignupToken(invitedUser.id);
@@ -333,6 +336,7 @@ export const userInviteResolver = {
         await context.prisma.user.update({
           where: { id: invitedUser.id },
           data: { status: INVITE_STATUS_DECLINED },
+          select: { id: true },
         });
 
         try {
