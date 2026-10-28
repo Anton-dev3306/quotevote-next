@@ -6,6 +6,7 @@
 import type { Request, Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import type * as Common from '~/types/common';
+import type { GraphQLPost } from '~/data/utils/postPrismaMapper';
 
 /**
  * PubSub type from graphql-subscriptions
@@ -548,3 +549,17 @@ export const SUBSCRIPTION_EVENTS = {
 } as const;
 
 export type SubscriptionEvent = (typeof SUBSCRIPTION_EVENTS)[keyof typeof SUBSCRIPTION_EVENTS];
+
+/** Vote as the post page reads it. `tags` is a string in the GraphQL schema. */
+export type PostDetailVote = Omit<Common.Vote, 'tags'> & {
+  tags: string | null;
+  user: Common.User | null;
+};
+
+/** A single post with what the post page shows: authors, votes, comments, quotes and room. */
+export type PostDetail = Omit<GraphQLPost, 'votes' | 'comments' | 'quotes' | 'messageRoom'> & {
+  votes: PostDetailVote[];
+  comments: (Common.Comment & { user: Common.User | null })[];
+  quotes: (Common.Quote & { user: Common.User | null })[];
+  messageRoom: Common.MessageRoom | null;
+};

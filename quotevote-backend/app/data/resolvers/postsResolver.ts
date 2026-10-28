@@ -1,12 +1,7 @@
-import { GraphQLError } from 'graphql';
-import { Prisma } from '@prisma/client';
-import { POST_RECORD_SELECT } from '~/data/utils/postPrismaMapper';
-import { parseSearchQuery } from '../utils/parseSearchQuery';
-import { attachPostRelations } from './utils/posts';
+import { attachPostDetail, attachPostRelations } from './utils/posts';
 import { escapeRegExp, isObjectId } from './utils/common';
-import type { GraphQLContext, PostQueryArgs } from '~/types/graphql';
+import type { GraphQLContext, PostDetail, PostQueryArgs } from '~/types/graphql';
 import type * as Common from '~/types/common';
-
 /**
  * Build a Prisma where/orderBy from PostQueryArgs.
  *
@@ -216,6 +211,31 @@ export const postsResolver = {
         entities,
         pagination: { total_count: totalPosts, limit, offset },
       };
+    },
+
+    // The schema keeps `topPosts` as an alias for `posts`.
+    topPosts: (
+      parent: unknown,
+      args: PostQueryArgs,
+      context: GraphQLContext
+    ): Promise<Common.PaginatedResult<Common.Post>> =>
+      postsResolver.Query.posts(parent, args, context),
+
+    // Like legacy, a deleted or unknown post returns null rather than an error.
+    post: async (
+      _parent: unknown,
+      args: { postId: string },
+      context: GraphQLContext
+    ): Promise<PostDetail | null> => {
+      if (!isObjectId(args.postId)) return null;
+
+      const post = await context.prisma.post.findUnique({
+        where: { id: args.postId },
+        select: POST_RECORD_SELECT,
+      });
+      if (!post || post.deleted === true) return null;
+
+      return attachPostDetail(context.prisma, post);
     },
   },
   Mutation: {
