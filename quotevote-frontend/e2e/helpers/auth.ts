@@ -3,6 +3,9 @@ import type { Page } from '@playwright/test';
 export const AUTHOR_USERNAME = (process.env.E2E_AUTHOR_USERNAME ?? 'authorUser').trim();
 export const AUTHOR_PASSWORD = process.env.E2E_AUTHOR_PASSWORD ?? '';
 
+/** Optional second account for @person DM search (E2E-CHAT-008). */
+export const PEER_USERNAME = (process.env.E2E_PEER_USERNAME ?? '').trim();
+
 export async function loginAsAuthorUser(page: Page): Promise<void> {
   if (!AUTHOR_PASSWORD) {
     throw new Error(
