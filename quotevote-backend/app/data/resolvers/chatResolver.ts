@@ -1,8 +1,26 @@
+import { GraphQLError } from 'graphql';
 import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
+import type { MessageSearchResult } from '~/data/types/MessageSearch';
 import { getReadableMessageRoom } from './utils/messages';
 import { isLive } from '~/data/resolvers/utils/batchLoad';
 import { MESSAGE_RECORD_SELECT, toMessageEntity } from '~/data/resolvers/utils/commentsQuotes';
+
+import {
+  MESSAGE_SEARCH_DEFAULT_LIMIT,
+  MESSAGE_SEARCH_MAX_LIMIT,
+  MESSAGE_SEARCH_MAX_TEXT_LENGTH,
+  MESSAGE_SEARCH_SELECT,
+  buildSnippet,
+  encodeSearchCursor,
+  parseSearchCursor,
+} from './utils/messageSearch';
+
+import {
+  PUBLIC_USER_SELECT,
+  toPublicUser,
+  type PrismaUserRecord,
+} from '~/data/utils/userPrismaMapper';
 
 function toMessageRoom(room: {
   id: string;
@@ -112,8 +130,91 @@ export const chatResolver = {
       });
       return reactions.map(toReaction);
     },
-  },
 
+    searchMessages: async (
+      _parent: unknown,
+      args: { text: string; limit?: number | null; cursor?: string | null },
+      context: GraphQLContext
+    ): Promise<MessageSearchResult> => {
+      if (!context.userId) {
+        throw new GraphQLError('Authentication required', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
+      }
+
+      const text = args.text.trim();
+      if (text.length > MESSAGE_SEARCH_MAX_TEXT_LENGTH) {
+        throw new GraphQLError('Search text is too long', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      const limit = args.limit ?? MESSAGE_SEARCH_DEFAULT_LIMIT;
+      if (!Number.isInteger(limit) || limit < 1) {
+        throw new GraphQLError('limit must be a positive integer', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+      const cursor = args.cursor ? parseSearchCursor(args.cursor) : null;
+      if (args.cursor && !cursor) {
+        throw new GraphQLError('Invalid cursor', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      if (!text) return { results: [], nextCursor: null };
+
+      const rooms = await context.prisma.messageRoom.findMany({
+        where: { userIds: { has: context.userId } },
+        select: { id: true },
+      });
+      if (rooms.length === 0) return { results: [], nextCursor: null };
+
+      const pageSize = Math.min(limit, MESSAGE_SEARCH_MAX_LIMIT);
+      const rows = await context.prisma.message.findMany({
+        where: {
+          messageRoomId: { in: rooms.map((room) => room.id) },
+          text: { contains: text, mode: 'insensitive' },
+          ...(cursor
+            ? {
+                OR: [
+                  { created: { lt: cursor.created } },
+                  { created: cursor.created, id: { lt: cursor.id } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ created: 'desc' }, { id: 'desc' }],
+        take: pageSize + 1,
+        select: MESSAGE_SEARCH_SELECT,
+      });
+
+      const page = rows.slice(0, pageSize);
+      const lastRead = page[page.length - 1];
+      const nextCursor =
+        rows.length > pageSize ? encodeSearchCursor(lastRead.created, lastRead.id) : null;
+      const live = page.filter(isLive);
+
+      const authorIds = [...new Set(live.map((message) => message.userId))];
+      const authors = authorIds.length
+        ? await context.prisma.user.findMany({
+            where: { id: { in: authorIds } },
+            select: PUBLIC_USER_SELECT,
+          })
+        : [];
+      const authorsById = new Map(authors.map((u) => [u.id, toPublicUser(u as PrismaUserRecord)]));
+
+      return {
+        results: live.map((message) => ({
+          _id: message.id,
+          messageRoomId: message.messageRoomId,
+          created: message.created,
+          snippet: buildSnippet(message.text, text),
+          user: authorsById.get(message.userId) ?? null,
+        })),
+        nextCursor,
+      };
+    },
+  },
   MessageRoom: {
     postDetails: async (parent: Common.MessageRoom, _args: unknown, context: GraphQLContext) => {
       if (!parent.postId) return null;
@@ -133,8 +234,6 @@ export const chatResolver = {
     ): Promise<Common.Message[]> => {
       const room = await getReadableMessageRoom(context.prisma, parent._id, context.userId);
       if (!room) return [];
-      // Legacy messages have no createdAt/updatedAt and may lack `deleted`, so read
-      // the safe columns and check the flag in code.
       const messages = await context.prisma.message.findMany({
         where: { messageRoomId: parent._id },
         orderBy: { created: 'asc' },

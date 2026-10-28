@@ -22,6 +22,9 @@ const createContext = () => ({
     post: {
       findUnique: jest.fn(),
     },
+    user: {
+      findMany: jest.fn(),
+    },
   },
   pubsub: {
     publish: jest.fn(),
@@ -313,5 +316,196 @@ describe('chatResolver Prisma queries', () => {
     const { select } = context.prisma.message.findMany.mock.calls[0][0];
     expect(select).not.toHaveProperty('createdAt');
     expect(select).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('chatResolver.Query.searchMessages', () => {
+  const roomId = '507f1f77bcf86cd799439021';
+  const authorId = '507f1f77bcf86cd799439022';
+  const otherAuthorId = '507f1f77bcf86cd799439023';
+  const ids = ['507f1f77bcf86cd7994390a1', '507f1f77bcf86cd7994390a2', '507f1f77bcf86cd7994390a3'];
+
+  const row = (overrides: Record<string, unknown> = {}) => ({
+    id: ids[0],
+    messageRoomId: roomId,
+    userId: authorId,
+    text: 'See you at the town hall tonight',
+    created: date,
+    deleted: false,
+    ...overrides,
+  });
+
+  const search = (
+    context: ReturnType<typeof createContext>,
+    args: { text: string; limit?: number | null; cursor?: string | null }
+  ) => (chatResolver.Query as any).searchMessages({}, args, context as never);
+
+  it('rejects a guest without reading anything', async () => {
+    const context = { ...createContext(), userId: null };
+
+    await expect(search(context as never, { text: 'hall' })).rejects.toMatchObject({
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+    expect(context.prisma.messageRoom.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns nothing for blank text and does not query', async () => {
+    const context = createContext();
+
+    await expect(search(context, { text: '   ' })).resolves.toEqual({
+      results: [],
+      nextCursor: null,
+    });
+    expect(context.prisma.messageRoom.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: 'text that is too long', args: { text: 'a'.repeat(201) } },
+    { label: 'a non-positive limit', args: { text: 'hall', limit: 0 } },
+    { label: 'a malformed cursor', args: { text: 'hall', cursor: 'nope' } },
+  ])('rejects $label', async ({ args }) => {
+    const context = createContext();
+
+    await expect(search(context, args)).rejects.toMatchObject({
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+    expect(context.prisma.message.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns nothing when the user is in no conversation', async () => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([]);
+
+    await expect(search(context, { text: 'hall' })).resolves.toEqual({
+      results: [],
+      nextCursor: null,
+    });
+    expect(context.prisma.message.findMany).not.toHaveBeenCalled();
+  });
+
+  it("only searches the signed-in user's own rooms", async () => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
+    context.prisma.message.findMany.mockResolvedValue([]);
+
+    await search(context, { text: ' town hall ' });
+
+    expect(context.prisma.messageRoom.findMany).toHaveBeenCalledWith({
+      where: { userIds: { has: 'user-1' } },
+      select: { id: true },
+    });
+    expect(context.prisma.message.findMany).toHaveBeenCalledWith({
+      where: {
+        messageRoomId: { in: [roomId] },
+        text: { contains: 'town hall', mode: 'insensitive' },
+      },
+      orderBy: [{ created: 'desc' }, { id: 'desc' }],
+      take: 21,
+      select: expect.objectContaining({ text: true, deleted: true }),
+    });
+  });
+
+  it('caps the page size', async () => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
+    context.prisma.message.findMany.mockResolvedValue([]);
+
+    await search(context, { text: 'hall', limit: 1000 });
+
+    expect(context.prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 51 })
+    );
+  });
+
+  it('resumes after the (created, _id) cursor and returns the next one', async () => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
+    context.prisma.message.findMany.mockResolvedValue([
+      row({ id: ids[0] }),
+      row({ id: ids[1] }),
+      row({ id: ids[2] }),
+    ]);
+    context.prisma.user.findMany.mockResolvedValue([
+      { id: authorId, username: 'bob', name: 'Bob' },
+    ]);
+
+    const result = await search(context, {
+      text: 'hall',
+      limit: 2,
+      cursor: `${date.getTime()}_${ids[2]}`,
+    });
+
+    expect(context.prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+        where: expect.objectContaining({
+          OR: [{ created: { lt: date } }, { created: date, id: { lt: ids[2] } }],
+        }),
+      })
+    );
+    expect(result.results.map((hit) => hit._id)).toEqual([ids[0], ids[1]]);
+    expect(result.nextCursor).toBe(`${date.getTime()}_${ids[1]}`);
+  });
+
+  it('skips deleted messages, keeps legacy rows without the flag, and still advances', async () => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
+    context.prisma.message.findMany.mockResolvedValue([
+      row({ id: ids[0], deleted: undefined }),
+      row({ id: ids[1], deleted: true }),
+      row({ id: ids[2] }),
+    ]);
+    context.prisma.user.findMany.mockResolvedValue([
+      { id: authorId, username: 'bob', name: 'Bob' },
+    ]);
+
+    const result = await search(context, { text: 'hall', limit: 2 });
+
+    expect(result.results.map((hit) => hit._id)).toEqual([ids[0]]);
+    expect(result.nextCursor).toBe(`${date.getTime()}_${ids[1]}`);
+  });
+
+  it('returns a snippet, public author fields, and null for a missing account', async () => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
+    context.prisma.message.findMany.mockResolvedValue([
+      row({ id: ids[0] }),
+      row({ id: ids[1], userId: otherAuthorId }),
+    ]);
+    context.prisma.user.findMany.mockResolvedValue([
+      { id: authorId, username: 'bob', name: 'Bob' },
+    ]);
+
+    const result = await search(context, { text: 'hall' });
+
+    expect(context.prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: [authorId, otherAuthorId] } },
+      select: expect.objectContaining({ id: true, username: true }),
+    });
+    expect(result.results[0]).toMatchObject({
+      _id: ids[0],
+      messageRoomId: roomId,
+      snippet: 'See you at the town hall tonight',
+      user: { _id: authorId, username: 'bob' },
+    });
+    expect(result.results[1].user).toBeNull();
+  });
+
+  it.each(['.*', '(', 'a+b?', '[x'])('treats %s as plain text', async (term) => {
+    const context = createContext();
+    context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
+    context.prisma.message.findMany.mockResolvedValue([row({ text: `price is 5 ${term} today` })]);
+    context.prisma.user.findMany.mockResolvedValue([
+      { id: authorId, username: 'bob', name: 'Bob' },
+    ]);
+
+    const result = await search(context, { text: term });
+
+    expect(context.prisma.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ text: { contains: term, mode: 'insensitive' } }),
+      })
+    );
+    expect(result.results[0].snippet).toContain(term);
   });
 });
