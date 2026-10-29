@@ -175,8 +175,6 @@ export const chatResolver = {
         where: {
           messageRoomId: { in: rooms.map((room) => room.id) },
           text: { contains: escapeRegExp(text), mode: 'insensitive' },
-          // Also matches legacy messages that have no `deleted` field.
-          deleted: { not: true },
           ...(cursor
             ? {
                 OR: [
@@ -193,10 +191,14 @@ export const chatResolver = {
 
       const page = rows.slice(0, pageSize);
       const lastRead = page[page.length - 1];
+      // The cursor follows the last row read, not the last one returned, so
+      // skipped deleted messages never stall pagination. Short pages are fine.
       const nextCursor =
         rows.length > pageSize ? encodeSearchCursor(lastRead.created, lastRead.id) : null;
-
-      const authorIds = [...new Set(page.map((message) => message.userId))];
+      // `deleted: { not: true }` would drop legacy messages that lack the field,
+      // so deleted messages are filtered in code, as `messages` does.
+      const live = page.filter(isLive);
+      const authorIds = [...new Set(live.map((message) => message.userId))];
       const authors = authorIds.length
         ? await context.prisma.user.findMany({
             where: { id: { in: authorIds } },
@@ -206,7 +208,7 @@ export const chatResolver = {
       const authorsById = new Map(authors.map((u) => [u.id, toPublicUser(u as PrismaUserRecord)]));
 
       return {
-        results: page.map((message) => ({
+        results: live.map((message) => ({
           _id: message.id,
           messageRoomId: message.messageRoomId,
           created: message.created,

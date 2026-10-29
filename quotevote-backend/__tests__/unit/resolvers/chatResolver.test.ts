@@ -398,14 +398,11 @@ describe('chatResolver.Query.searchMessages', () => {
       where: {
         messageRoomId: { in: [roomId] },
         text: { contains: 'town hall', mode: 'insensitive' },
-        deleted: { not: true },
       },
       orderBy: [{ created: 'desc' }, { id: 'desc' }],
       take: 21,
-      select: expect.objectContaining({ text: true }),
+      select: expect.objectContaining({ text: true, deleted: true }),
     });
-    const { select } = context.prisma.message.findMany.mock.calls[0][0];
-    expect(select).not.toHaveProperty('deleted');
   });
 
   it('caps the page size', async () => {
@@ -450,12 +447,12 @@ describe('chatResolver.Query.searchMessages', () => {
     expect(result.nextCursor).toBe(`${date.getTime()}_${ids[1]}`);
   });
 
-  it('filters deleted messages in the query so pages stay full', async () => {
+  it('drops deleted messages in code, keeps legacy rows without the flag, and advances the cursor', async () => {
     const context = createContext();
     context.prisma.messageRoom.findMany.mockResolvedValue([{ id: roomId }]);
     context.prisma.message.findMany.mockResolvedValue([
-      row({ id: ids[0] }),
-      row({ id: ids[1] }),
+      row({ id: ids[0], deleted: undefined }),
+      row({ id: ids[1], deleted: true }),
       row({ id: ids[2] }),
     ]);
     context.prisma.user.findMany.mockResolvedValue([
@@ -464,13 +461,9 @@ describe('chatResolver.Query.searchMessages', () => {
 
     const result = await search(context, { text: 'hall', limit: 2 });
 
-    expect(context.prisma.message.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        take: 3,
-        where: expect.objectContaining({ deleted: { not: true } }),
-      })
-    );
-    expect(result.results).toHaveLength(2);
+    const { where } = context.prisma.message.findMany.mock.calls[0][0];
+    expect(where).not.toHaveProperty('deleted');
+    expect(result.results.map((hit) => hit._id)).toEqual([ids[0]]);
     expect(result.nextCursor).toBe(`${date.getTime()}_${ids[1]}`);
   });
 
