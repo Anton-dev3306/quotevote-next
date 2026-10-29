@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only app/server.ts",
     "build": "tsc",
-    "start": "node dist/app/server.js",
+    "start": "node dist/app/start.js",
     "test": "jest --passWithNoTests",
     "test:prisma": "tsx scripts/check-replica-set.ts && jest --testPathPattern='prisma-.*\\.test\\.ts$' --testPathIgnorePatterns='[]'",
     "lint": "eslint .",
@@ -58,6 +58,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.0.1",
     "morgan": "^1.10.1",
+    "tsconfig-paths": "^4.2.0",
     "winston": "^3.18.3",
     "ws": "^8.22.0"
   },
@@ -84,7 +85,6 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "tsconfig-paths": "^4.2.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.49.0"
