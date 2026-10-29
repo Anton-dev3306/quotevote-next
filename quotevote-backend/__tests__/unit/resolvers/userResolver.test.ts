@@ -52,9 +52,20 @@ describe('userResolver', () => {
 
       expect(result).toBeNull();
       expect(ctx.prisma.user.findFirst).toHaveBeenCalledWith({
-        where: { username: 'alice', accountStatus: 'active' },
-        select: expect.any(Object),
+        where: { username: 'alice' },
+        select: { ...PUBLIC_USER_SELECT, accountStatus: true },
       });
+    });
+
+    it('returns null for a disabled account', async () => {
+      const ctx = mockContext();
+      (ctx.prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: actorId,
+        username: 'alice',
+        accountStatus: 'disabled',
+      });
+
+      await expect(userResolver.Query.user(null, { username: 'alice' }, ctx)).resolves.toBeNull();
     });
 
     it('returns public user profile when found', async () => {
@@ -100,12 +111,27 @@ describe('userResolver', () => {
             { name: { contains: '@.*', mode: 'insensitive' } },
             { username: { contains: '@.*', mode: 'insensitive' } },
           ],
-          accountStatus: 'active',
         },
-        select: expect.any(Object),
-        take: 10,
+        select: { ...PUBLIC_USER_SELECT, accountStatus: true },
+        take: 20,
       });
       expect(result).toHaveLength(1);
+    });
+
+    it('leaves out disabled accounts in code and returns at most 10', async () => {
+      const ctx = mockContext();
+      const rows = Array.from({ length: 14 }, (_, i) => ({
+        id: `507f1f77bcf86cd7994390${String(i).padStart(2, '0')}`,
+        username: `user${i}`,
+        accountStatus: i < 3 ? 'disabled' : 'active',
+      }));
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue(rows);
+
+      const result = await userResolver.Query.searchUser(null, { queryName: 'user' }, ctx);
+
+      expect(result).toHaveLength(10);
+      expect(result.map((u) => u.username)).not.toContain('user0');
+      expect(result[0].username).toBe('user3');
     });
   });
 

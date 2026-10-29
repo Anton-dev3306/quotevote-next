@@ -19,8 +19,9 @@ import {
   toPublicUser,
   type PrismaUserRecord,
 } from '~/data/utils/userPrismaMapper';
+import { uniqueArrayObjects } from '~/data/resolvers/utils/common';
 import type * as Common from '~/types/common';
-import type { GraphQLContext } from '~/types/graphql';
+import type { FollowInfoEntry, GraphQLContext } from '~/types/graphql';
 
 /** Legacy invite codes: 1 = requested, 4 = approved (not yet signed up). */
 const UNFINISHED_INVITE_STATUSES = new Set([1, 4]);
@@ -32,6 +33,25 @@ function isObjectId(id: string): boolean {
 }
 
 const USER_REPORTS_LIMIT = 100;
+const SEARCH_USER_LIMIT = 10;
+
+const FOLLOW_INFO_USER_SELECT = {
+  id: true,
+  username: true,
+  avatar: true,
+  followingIds: true,
+  followerIds: true,
+  accountStatus: true,
+} as const satisfies Prisma.UserSelect;
+
+/**
+ * Accounts created before `accountStatus` existed don't have the field, and a Prisma
+ * `accountStatus: 'active'` filter leaves them out. Prisma reads the missing field as
+ * the default ('active'), so check it in code instead.
+ */
+function isDisabled(user: { accountStatus?: string | null }): boolean {
+  return user.accountStatus === 'disabled';
+}
 
 function isReportStatus(value: string): value is ReportStatus {
   return (Object.values(ReportStatus) as string[]).includes(value);
@@ -143,14 +163,11 @@ export const userResolver = {
       // fields so this can't be used to harvest email addresses or other
       // sensitive data, and match searchUser's active-account filter.
       const user = await context.prisma.user.findFirst({
-        where: {
-          username: args.username?.trim(),
-          accountStatus: 'active',
-        },
-        select: PUBLIC_USER_SELECT,
+        where: { username: args.username?.trim() },
+        select: { ...PUBLIC_USER_SELECT, accountStatus: true },
       });
 
-      if (!user) return null;
+      if (!user || isDisabled(user)) return null;
       return toPublicUser(user as PrismaUserRecord);
     },
 
@@ -173,13 +190,59 @@ export const userResolver = {
             { name: { contains: queryName, mode: 'insensitive' } },
             { username: { contains: queryName, mode: 'insensitive' } },
           ],
-          accountStatus: 'active',
         },
-        select: PUBLIC_USER_SELECT,
-        take: 10,
+        select: { ...PUBLIC_USER_SELECT, accountStatus: true },
+        // Disabled accounts are dropped below, so read a few extra.
+        take: SEARCH_USER_LIMIT * 2,
       });
 
-      return users.map((u) => toPublicUser(u as PrismaUserRecord));
+      return users
+        .filter((u) => !isDisabled(u))
+        .slice(0, SEARCH_USER_LIMIT)
+        .map((u) => toPublicUser(u as PrismaUserRecord));
+    },
+
+    getUserFollowInfo: async (
+      _parent: unknown,
+      args: { username: string; filter?: string | null },
+      context: GraphQLContext
+    ): Promise<FollowInfoEntry[]> => {
+      const username = args.username?.trim();
+      if (!username) return [];
+
+      const profile = await context.prisma.user.findFirst({
+        where: { username },
+        select: { followingIds: true, followerIds: true, accountStatus: true },
+      });
+      if (!profile || isDisabled(profile)) return [];
+
+      // Legacy follow arrays can hold the same id more than once.
+      const ids = uniqueArrayObjects(
+        args.filter === 'following' ? profile.followingIds : profile.followerIds
+      );
+      if (ids.length === 0) return [];
+
+      const users = await context.prisma.user.findMany({
+        where: { id: { in: ids } },
+        select: FOLLOW_INFO_USER_SELECT,
+      });
+      const usersById = new Map(users.filter((u) => !isDisabled(u)).map((u) => [u.id, u]));
+      const profileFollowing = new Set(profile.followingIds);
+
+      return ids.flatMap((id) => {
+        const user = usersById.get(id);
+        if (!user) return [];
+        return [
+          {
+            id: user.id,
+            username: user.username,
+            avatar: user.avatar,
+            numFollowers: uniqueArrayObjects(user.followerIds).length,
+            numFollowing: uniqueArrayObjects(user.followingIds).length,
+            profileFollows: profileFollowing.has(user.id),
+          },
+        ];
+      });
     },
     getUserReports: async (
       _parent: unknown,
