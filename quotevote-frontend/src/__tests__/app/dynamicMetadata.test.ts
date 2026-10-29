@@ -56,14 +56,24 @@ describe("post generateMetadata", () => {
     });
   });
 
-  it("falls back to generic metadata and the requested path when the post cannot be loaded", async () => {
+  it("marks a missing or deleted post noindex", async () => {
     mockedGetPost.mockResolvedValueOnce(null);
 
     const metadata = await generatePostMetadata({ params: postParams("missing") });
 
     expect(metadata.title).toBe("Post — Quote.Vote");
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+  });
+
+  it("keeps the generic fallback indexable when the API is unreachable", async () => {
+    mockedGetPost.mockResolvedValueOnce(undefined);
+
+    const metadata = await generatePostMetadata({ params: postParams("outage") });
+
+    expect(metadata.title).toBe("Post — Quote.Vote");
     expect(metadata.description).toMatch(/join the discussion/i);
-    expect(metadata.alternates?.canonical).toBe("/post/general/hello-world/missing");
+    expect(metadata.alternates?.canonical).toBe("/post/general/hello-world/outage");
+    expect(metadata.robots).toBeUndefined();
   });
 
   it("describes posts without text by author", async () => {
@@ -94,10 +104,21 @@ describe("profile generateMetadata", () => {
     );
     expect(metadata.alternates?.canonical).toBe("/profile/jane");
     expect(metadata.openGraph).toMatchObject({ type: "profile", url: "/profile/jane" });
+    expect(metadata.robots).toBeUndefined();
   });
 
-  it("falls back to the decoded username when the user cannot be loaded", async () => {
+  it("marks an unknown username noindex", async () => {
     mockedGetUser.mockResolvedValueOnce(null);
+
+    const metadata = await generateProfileMetadata({
+      params: Promise.resolve({ username: "nobody" }),
+    });
+
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+  });
+
+  it("falls back to the decoded username and stays indexable when the API is unreachable", async () => {
+    mockedGetUser.mockResolvedValueOnce(undefined);
 
     const metadata = await generateProfileMetadata({
       params: Promise.resolve({ username: "jane%2Edoe" }),
@@ -106,6 +127,7 @@ describe("profile generateMetadata", () => {
     expect(mockedGetUser).toHaveBeenLastCalledWith("jane.doe");
     expect(metadata.title).toBe("@jane.doe — Quote.Vote");
     expect(metadata.alternates?.canonical).toBe("/profile/jane.doe");
+    expect(metadata.robots).toBeUndefined();
   });
 
   it("gives follower lists their own title and canonical url", async () => {

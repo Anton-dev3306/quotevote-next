@@ -20,6 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: `See ${displayName}'s posts, quotes and votes on ${SITE_NAME}.`,
     path: `/profile/${encodeURIComponent(user?.username ?? username)}`,
     type: 'profile',
+    noIndex: user === null,
   });
 }
 

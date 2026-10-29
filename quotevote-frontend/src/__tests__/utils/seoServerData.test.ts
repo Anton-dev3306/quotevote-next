@@ -11,8 +11,12 @@ describe("seo server data", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
   });
 
-  const respond = (body: unknown, ok = true): void => {
-    fetchMock.mockResolvedValueOnce({ ok, json: async () => body });
+  const respond = (body: unknown, status = 200): void => {
+    fetchMock.mockResolvedValueOnce({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    });
   };
 
   it("posts the post metadata query with variables", async () => {
@@ -27,19 +31,54 @@ describe("seo server data", () => {
     expect(body.variables).toEqual({ postId: "p1" });
   });
 
-  it("returns null when the post does not exist", async () => {
-    respond({ data: { post: null } });
-    await expect(getPostForMetadata("missing")).resolves.toBeNull();
+  describe("not found resolves to null", () => {
+    it("when the API answers data.post: null", async () => {
+      respond({ data: { post: null } });
+      await expect(getPostForMetadata("missing")).resolves.toBeNull();
+    });
+
+    it("when legacy answers a deleted post with a 404 JSON body", async () => {
+      respond({ errors: [{ message: "Post not found" }], data: { post: null } }, 404);
+      await expect(getPostForMetadata("deleted")).resolves.toBeNull();
+    });
+
+    it("when a 404 body carries no data at all", async () => {
+      respond({ errors: [{ message: "Post not found" }] }, 404);
+      await expect(getPostForMetadata("deleted-no-data")).resolves.toBeNull();
+    });
+
+    it("when the user is unknown", async () => {
+      respond({ errors: [{ message: "Error: User not found" }], data: { user: null } });
+      await expect(getUserForMetadata("nobody")).resolves.toBeNull();
+    });
   });
 
-  it("returns null on HTTP errors", async () => {
-    respond({}, false);
-    await expect(getUserForMetadata("jane")).resolves.toBeNull();
-  });
+  describe("an unreachable API resolves to undefined", () => {
+    it("on server errors", async () => {
+      respond({}, 500);
+      await expect(getUserForMetadata("jane")).resolves.toBeUndefined();
+    });
 
-  it("returns null when the request throws", async () => {
-    fetchMock.mockRejectedValueOnce(new Error("network down"));
-    await expect(getUserForMetadata("john")).resolves.toBeNull();
+    it("when the request throws or times out", async () => {
+      fetchMock.mockRejectedValueOnce(new Error("network down"));
+      await expect(getUserForMetadata("john")).resolves.toBeUndefined();
+    });
+
+    it("when a 404 body is not JSON", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => {
+          throw new SyntaxError("Unexpected token <");
+        },
+      });
+      await expect(getPostForMetadata("proxy-404")).resolves.toBeUndefined();
+    });
+
+    it("when a 200 body has errors but no data", async () => {
+      respond({ errors: [{ message: "boom" }] });
+      await expect(getPostForMetadata("errors-only")).resolves.toBeUndefined();
+    });
   });
 
   it("returns sitemap posts or an empty list", async () => {

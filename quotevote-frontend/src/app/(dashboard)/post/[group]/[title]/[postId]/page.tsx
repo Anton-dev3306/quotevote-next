@@ -25,12 +25,14 @@ export async function generateMetadata({ params }: PostPageProps): Promise<Metad
     ? postUrl
     : `/post/${[group, title, postId].map((s) => encodeURIComponent(decodeParam(s))).join("/")}`;
 
+  // A missing or deleted post must not stay indexable; an API outage keeps the generic fallback.
   if (!post) {
     return buildPageMetadata({
       title: pageTitle("Post"),
       description: `Read this post and join the discussion on ${SITE_NAME}.`,
       path,
       type: "article",
+      noIndex: post === null,
     });
   }
 

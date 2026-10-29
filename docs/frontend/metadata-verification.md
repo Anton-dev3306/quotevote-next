@@ -22,7 +22,7 @@ Route-level metadata after the `react-helmet-async` → Next.js Metadata API mig
 - **Site URL:** `metadataBase` comes from `NEXT_PUBLIC_SITE_URL`, falling back to `VERCEL_PROJECT_PRODUCTION_URL` and then `http://localhost:3000`. The hardcoded `https://quote.vote` is removed, since that domain still serves the legacy client.
 - **Post detail:** the client component moved to `PostPageContent.tsx`. The new server `page.tsx` has `generateMetadata()`, which loads the post's title, text, URL, created date and author through `src/lib/seo/serverData.ts`.
 - **Profile:** `generateMetadata()` loads the public `user(username)` record and uses the display name and handle.
-- **Server data** (`src/lib/seo/serverData.ts`): plain `fetch` against the public GraphQL API, cached with React `cache()` and revalidated every 5 minutes. Requests time out after 3 s (10 s for the sitemap), and any failure falls back to generic metadata, so a slow or down API never breaks a page.
+- **Server data** (`src/lib/seo/serverData.ts`): plain `fetch` against the public GraphQL API, cached with React `cache()` and revalidated every 5 minutes. Requests time out after 3 s (10 s for the sitemap). The loaders tell "not found" apart from "couldn't ask": a missing or deleted post (including a legacy HTTP 404) or an unknown username returns `null`, and the page is marked `noindex`. A timeout, network error or server error returns `undefined`, and the page keeps an indexable generic fallback, so a slow or down API never breaks or de-indexes a page.
 - **Social image:** `src/app/opengraph-image.tsx` generates a 1200×630 PNG, used for both `og:image` and `twitter:image`.
 - **robots.txt and sitemap.xml:** `public/robots.txt` and `public/sitemap.xml` are replaced by `src/app/robots.ts` and `src/app/sitemap.ts`, both built from the site URL. The sitemap lists static pages, public posts and the profiles of their authors.
 - **Indexing:** signed-in, token and utility pages are `noindex`.
@@ -56,9 +56,10 @@ Public routes (`Twitterbot/1.0` user agent):
 | `/about` | About — Quote.Vote | `/about` | website |
 | `/auths/login` | Sign In — Quote.Vote | `/auths/login` | website |
 | `/post/quotevote/quote.vote-is-open-source/6acc…6bdd` | Quote.Vote is Open Source — Quote.Vote | same path | article |
-| `/post/x/y/000000000000000000000000` (missing post) | Post — Quote.Vote | same path | article |
+| `/post/x/y/000000000000000000000000` (missing post) | Post — Quote.Vote, `noindex, nofollow` | same path | article |
 | `/profile/louisgirifalco` | Louis Girifalco (@louisgirifalco) — Quote.Vote | `/profile/louisgirifalco` | profile |
 | `/profile/sevan` (empty display name) | @sevan — Quote.Vote | `/profile/sevan` | profile |
+| `/profile/no-such-user-zz9` (unknown user) | @no-such-user-zz9 — Quote.Vote, `noindex, nofollow` | `/profile/no-such-user-zz9` | profile |
 | `/profile/louisgirifalco/followers` | Followers · @louisgirifalco — Quote.Vote | `/profile/louisgirifalco/followers` | website |
 
 Each of these also rendered a description, `og:title`, `og:description`, `og:site_name`, `og:image`, `twitter:card=summary_large_image`, `twitter:title` and `twitter:image`. The post page's description is the first 160 characters of the post text, ending on a word boundary.
@@ -84,7 +85,7 @@ Other checks:
 
 ## Build result
 
-`pnpm build` (Next.js 16.1.1): exit 0, compiled and type-checked, 19 static pages generated (including `/opengraph-image`, `/robots.txt` and `/sitemap.xml`), no metadata warnings. `pnpm lint`: 0 errors (3 existing warnings in unrelated files). `pnpm test`: 200 suites, 2302 tests passing.
+`pnpm build` (Next.js 16.1.1): exit 0, compiled and type-checked, 19 static pages generated (including `/opengraph-image`, `/robots.txt` and `/sitemap.xml`), no metadata warnings. `pnpm lint`: 0 errors (3 existing warnings in unrelated files). `pnpm test`: 200 suites, 2309 tests passing.
 
 The only build warning was the Node engine mismatch on the verifying machine (Node 22 vs `engines.node: 24.x`).
 
@@ -93,5 +94,5 @@ The only build warning was the Node engine mismatch on the verifying machine (No
 - **External preview tools** (opengraph.xyz, LinkedIn Post Inspector, X card validator) need a public URL. Run them against the Vercel preview for the PR once a maintainer authorizes the deployment.
 - **Google Rich Results Test** for a post and a profile, after #94 (JSON-LD) lands.
 - **`/terms` and `/auths/signup`** should switch to `buildPageMetadata()` after #568 and #569 merge.
-- **Production `NEXT_PUBLIC_SITE_URL`:** set it to the frontend's production domain in the hosting environment. Without it, Vercel deployments fall back to the project's production domain.
+- **Production `NEXT_PUBLIC_SITE_URL`:** set it to `https://beta.quote.vote` in the hosting environment (moves to `https://quote.vote` at the 2.0 launch). Without it, Vercel deployments fall back to the project's production domain.
 - **Unused legacy helpers:** `src/components/common/SEOHead.tsx` and `src/hooks/useSEOHead.ts` are only used by their own tests and could be removed in a separate cleanup.

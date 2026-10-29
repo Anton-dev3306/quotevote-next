@@ -15,12 +15,15 @@ const METADATA_TIMEOUT_MS = 3000;
 const SITEMAP_TIMEOUT_MS = 10000;
 const REVALIDATE_SECONDS = 300;
 
-// Metadata must never break a page render: any network/GraphQL failure resolves to null.
+// Never throws, so metadata can't break a page render.
+// Resolves to `undefined` when the API couldn't be asked (network error, timeout, unexpected
+// status, unreadable body) and to `null` when it answered 404 without data. Legacy answers a
+// missing or deleted post with a 404, so that body is still read.
 async function queryPublicGraphql<TData>(
   query: DocumentNode,
   variables: Record<string, unknown>,
   timeoutMs: number = METADATA_TIMEOUT_MS
-): Promise<TData | null> {
+): Promise<TData | null | undefined> {
   try {
     const response = await fetch(getGraphqlServerUrl(), {
       method: "POST",
@@ -29,30 +32,34 @@ async function queryPublicGraphql<TData>(
       next: { revalidate: REVALIDATE_SECONDS },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!response.ok) return null;
+    const notFound = response.status === 404;
+    if (!response.ok && !notFound) return undefined;
 
     const json = (await response.json()) as GraphqlResponse<TData>;
-    return json.data ?? null;
+    if (json.data) return json.data;
+    return notFound ? null : undefined;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
+// `null`: the post doesn't exist. `undefined`: the API couldn't be reached.
 export const getPostForMetadata = cache(
-  async (postId: string): Promise<PostMetadataData | null> => {
+  async (postId: string): Promise<PostMetadataData | null | undefined> => {
     const data = await queryPublicGraphql<{ post: PostMetadataData | null }>(GET_POST_METADATA, {
       postId,
     });
-    return data?.post ?? null;
+    return data === undefined ? undefined : (data?.post ?? null);
   }
 );
 
+// `null`: the user doesn't exist. `undefined`: the API couldn't be reached.
 export const getUserForMetadata = cache(
-  async (username: string): Promise<UserMetadataData | null> => {
+  async (username: string): Promise<UserMetadataData | null | undefined> => {
     const data = await queryPublicGraphql<{ user: UserMetadataData | null }>(GET_USER_METADATA, {
       username,
     });
-    return data?.user ?? null;
+    return data === undefined ? undefined : (data?.user ?? null);
   }
 );
 
