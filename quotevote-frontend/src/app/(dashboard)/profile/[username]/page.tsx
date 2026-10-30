@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { buildPageMetadata, decodeParam, pageTitle, SITE_NAME } from '@/lib/seo/metadata';
+import { buildProfileJsonLd } from '@/lib/seo/jsonLd';
 import { getUserForMetadata } from '@/lib/seo/serverData';
+import { JsonLd } from '@/components/common/JsonLd';
 import { ProfileUsernamePage } from './ProfileUsernamePageContent';
 
 interface Props {
@@ -28,5 +30,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProfileByUsernamePage({ params }: Props) {
   const { username } = await params;
-  return <ProfileUsernamePage username={username} />;
+  const user = await getUserForMetadata(decodeParam(username));
+
+  return (
+    <>
+      {user && <JsonLd data={buildProfileJsonLd(user)} />}
+      <ProfileUsernamePage username={username} />
+    </>
+  );
 }

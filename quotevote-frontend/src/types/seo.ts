@@ -23,6 +23,7 @@ export interface UserMetadataData {
   _id: string;
   name?: string | null;
   username: string;
+  avatar?: string | Record<string, unknown> | null;
 }
 
 export interface SitemapPostData {
@@ -36,4 +37,21 @@ export interface SitemapPostData {
 export interface GraphqlResponse<TData> {
   data?: TData | null;
   errors?: Array<{ message: string }>;
+}
+
+export type JsonLdValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | JsonLdObject
+  | JsonLdValue[];
+
+export interface JsonLdObject {
+  [key: string]: JsonLdValue;
+}
+
+export interface JsonLdProps {
+  data: JsonLdObject;
 }
