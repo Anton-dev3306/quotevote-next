@@ -41,6 +41,12 @@ jobs:
       - name: Run type check
         run: pnpm type-check
 
+      # Every frontend GraphQL document must validate against this backend's
+      # schema and call root fields that have a resolver. Known gaps are listed
+      # with their issue in app/data/utils/frontendContract.ts.
+      - name: Check frontend GraphQL contract
+        run: pnpm check:contract
+
       - name: Run tests with coverage
         run: pnpm test -- --coverage --coverageReporters=text --coverageReporters=lcov
 
