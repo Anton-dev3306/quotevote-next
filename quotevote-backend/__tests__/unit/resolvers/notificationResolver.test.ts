@@ -4,11 +4,16 @@ import type { GraphQLContext } from '~/types/graphql';
 
 const userId = '60d5ec49ad414d7a8d5464a0';
 
+const notificationId = '60d5ec49ad414d7a8d5464b1';
+const otherUserId = '60d5ec49ad414d7a8d546499';
+
 function mockContext(user: GraphQLContext['user'] = null): GraphQLContext {
   return {
     prisma: {
       notification: {
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn(),
+        update: jest.fn(),
       },
     } as unknown as GraphQLContext['prisma'],
     req: {} as GraphQLContext['req'],
@@ -170,6 +175,124 @@ describe('notificationResolver', () => {
           created,
         },
       ]);
+    });
+  });
+
+  describe('Mutation.removeNotification', () => {
+    const created = new Date('2026-01-01T00:00:00.000Z');
+    const liveNotification = {
+      id: notificationId,
+      userId,
+      userIdBy: otherUserId,
+      label: 'nice point',
+      status: 'new',
+      notificationType: 'COMMENTED',
+      postId: '60d5ec49ad414d7a8d5464a2',
+      created,
+    };
+
+    it('requires authentication', async () => {
+      await expect(
+        notificationResolver.Mutation.removeNotification(
+          null,
+          { notificationId },
+          mockContext(null)
+        )
+      ).rejects.toMatchObject({
+        message: 'Authentication required',
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    });
+
+    it('rejects invalid notificationId', async () => {
+      const ctx = authedContext();
+
+      await expect(
+        notificationResolver.Mutation.removeNotification(
+          null,
+          { notificationId: 'not-an-id' },
+          ctx
+        )
+      ).rejects.toMatchObject({
+        message: 'Invalid notificationId',
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    });
+
+    it('soft-deletes when the recipient requests it', async () => {
+      const ctx = authedContext();
+      (ctx.prisma.notification.findUnique as jest.Mock).mockResolvedValue(liveNotification);
+      (ctx.prisma.notification.update as jest.Mock).mockResolvedValue({
+        ...liveNotification,
+        status: 'deleted',
+      });
+
+      const result = await notificationResolver.Mutation.removeNotification(
+        null,
+        { notificationId },
+        ctx
+      );
+
+      expect(ctx.prisma.notification.update).toHaveBeenCalledWith({
+        where: { id: notificationId },
+        data: { status: 'deleted' },
+        select: NOTIFICATION_SELECT,
+      });
+      expect(result).toEqual({
+        _id: notificationId,
+        userId,
+        userIdBy: otherUserId,
+        label: 'nice point',
+        status: 'deleted',
+        notificationType: 'COMMENTED',
+        postId: '60d5ec49ad414d7a8d5464a2',
+        created,
+      });
+    });
+
+    it('is idempotent when already deleted', async () => {
+      const ctx = authedContext();
+      (ctx.prisma.notification.findUnique as jest.Mock).mockResolvedValue({
+        ...liveNotification,
+        status: 'deleted',
+      });
+
+      const result = await notificationResolver.Mutation.removeNotification(
+        null,
+        { notificationId },
+        ctx
+      );
+
+      expect(ctx.prisma.notification.update).not.toHaveBeenCalled();
+      expect(result.status).toBe('deleted');
+    });
+
+    it('forbids removing another users notification', async () => {
+      const ctx = authedContext();
+      (ctx.prisma.notification.findUnique as jest.Mock).mockResolvedValue({
+        ...liveNotification,
+        userId: otherUserId,
+      });
+
+      await expect(
+        notificationResolver.Mutation.removeNotification(null, { notificationId }, ctx)
+      ).rejects.toMatchObject({
+        message: 'Not authorized to remove this notification',
+        extensions: { code: 'FORBIDDEN' },
+      });
+      expect(ctx.prisma.notification.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NOT_FOUND when the notification is missing', async () => {
+      const ctx = authedContext();
+      (ctx.prisma.notification.findUnique as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        notificationResolver.Mutation.removeNotification(null, { notificationId }, ctx)
+      ).rejects.toMatchObject({
+        message: 'Notification not found',
+        extensions: { code: 'NOT_FOUND' },
+      });
     });
   });
 });
