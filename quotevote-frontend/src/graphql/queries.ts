@@ -956,6 +956,7 @@ export const GET_USER_METADATA = gql`
       _id
       name
       username
+      avatar
     }
   }
 `

@@ -3,6 +3,8 @@ import { buildPageMetadata } from '@/lib/seo/metadata'
 import type { ReactElement } from 'react'
 import { Suspense } from 'react'
 import { AuthAwareHome } from './components/AuthAwareHome'
+import { JsonLd } from '@/components/common/JsonLd'
+import { buildWebSiteJsonLd } from '@/lib/seo/jsonLd'
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Quote.Vote – Share Ideas. Vote on What Matters.',
@@ -35,8 +37,11 @@ function DirectorySkeleton(): ReactElement {
  */
 export default function RootPage(): ReactElement {
   return (
-    <Suspense fallback={<DirectorySkeleton />}>
-      <AuthAwareHome />
-    </Suspense>
+    <>
+      <JsonLd data={buildWebSiteJsonLd()} />
+      <Suspense fallback={<DirectorySkeleton />}>
+        <AuthAwareHome />
+      </Suspense>
+    </>
   )
 }
