@@ -1,5 +1,11 @@
 import { GraphQLError } from 'graphql';
-import { NOTIFICATION_SELECT, toNotificationEntity } from '~/data/resolvers/utils/notifications';
+import {
+  NOTIFICATION_SELECT,
+  attachNotificationRelations,
+  loadNotificationPost,
+  loadNotificationSender,
+  toNotificationEntity,
+} from '~/data/resolvers/utils/notifications';
 import type * as Common from '~/types/common';
 import type { GraphQLContext } from '~/types/graphql';
 
@@ -17,7 +23,7 @@ export const notificationResolver = {
       _parent: unknown,
       args: { limit?: number | null },
       context: GraphQLContext
-    ): Promise<Common.Notification[]> => {
+    ): Promise<Common.NotificationWithRelations[]> => {
       if (!context.user?._id) {
         throw new GraphQLError('Authentication required', {
           extensions: { code: 'UNAUTHENTICATED' },
@@ -36,7 +42,28 @@ export const notificationResolver = {
         select: NOTIFICATION_SELECT,
       });
 
-      return notifications.map(toNotificationEntity);
+      return attachNotificationRelations(
+        context.prisma,
+        notifications.map(toNotificationEntity)
+      );
     },
+  },
+  // The query loads these in a batch. The live notification subscription
+  // publishes a bare notification, so they're loaded here for it.
+  Notification: {
+    userBy: async (
+      parent: Common.Notification & { userBy?: Common.User | null },
+      _args: unknown,
+      context: GraphQLContext
+    ): Promise<Common.User | null> =>
+      parent.userBy !== undefined
+        ? parent.userBy
+        : loadNotificationSender(context.prisma, parent.userIdBy),
+    post: async (
+      parent: Common.Notification & { post?: Common.NotificationPost | null },
+      _args: unknown,
+      context: GraphQLContext
+    ): Promise<Common.NotificationPost | null> =>
+      parent.post !== undefined ? parent.post : loadNotificationPost(context.prisma, parent.postId),
   },
 };

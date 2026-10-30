@@ -1,5 +1,9 @@
 import { notificationResolver } from '~/data/resolvers/notificationResolver';
-import { NOTIFICATION_SELECT } from '~/data/resolvers/utils/notifications';
+import {
+  NOTIFICATION_POST_SELECT,
+  NOTIFICATION_SELECT,
+} from '~/data/resolvers/utils/notifications';
+import { PUBLIC_USER_SELECT } from '~/data/utils/userPrismaMapper';
 import type { GraphQLContext } from '~/types/graphql';
 
 const userId = '60d5ec49ad414d7a8d5464a0';
@@ -9,6 +13,14 @@ function mockContext(user: GraphQLContext['user'] = null): GraphQLContext {
     prisma: {
       notification: {
         findMany: jest.fn().mockResolvedValue([]),
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      post: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
       },
     } as unknown as GraphQLContext['prisma'],
     req: {} as GraphQLContext['req'],
@@ -106,8 +118,12 @@ describe('notificationResolver', () => {
           notificationType: undefined,
           postId: undefined,
           created,
+          userBy: null,
+          post: null,
         },
       ]);
+      expect(ctx.prisma.user.findMany).not.toHaveBeenCalled();
+      expect(ctx.prisma.post.findMany).not.toHaveBeenCalled();
     });
 
     it('floors a fractional limit', async () => {
@@ -158,6 +174,8 @@ describe('notificationResolver', () => {
           notificationType: 'COMMENTED',
           postId: '60d5ec49ad414d7a8d5464a2',
           created,
+          userBy: null,
+          post: null,
         },
         {
           _id: 'n2',
@@ -168,8 +186,131 @@ describe('notificationResolver', () => {
           notificationType: 'FOLLOW',
           postId: undefined,
           created,
+          userBy: null,
+          post: null,
         },
       ]);
+    });
+
+    it('attaches the sender with public fields and the post, deleted or not, in one query each', async () => {
+      const ctx = authedContext();
+      const created = new Date('2026-01-01T00:00:00.000Z');
+      const senderId = '60d5ec49ad414d7a8d5464a1';
+      const postId = '60d5ec49ad414d7a8d5464a2';
+      const row = (id: string, overrides: Record<string, unknown> = {}) => ({
+        id,
+        userId,
+        userIdBy: senderId,
+        label: 'voted',
+        status: 'new',
+        notificationType: 'UPVOTED',
+        postId,
+        created,
+        ...overrides,
+      });
+      (ctx.prisma.notification.findMany as jest.Mock).mockResolvedValue([
+        row('n1'),
+        row('n2'),
+        row('n3', { userIdBy: '60d5ec49ad414d7a8d5464a9', postId: null }),
+      ]);
+      (ctx.prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: senderId, username: 'bob', name: 'Bob', avatar: 'bob.png', contributorBadge: true },
+      ]);
+      (ctx.prisma.post.findMany as jest.Mock).mockResolvedValue([
+        { id: postId, url: '/post/a/b/' + postId, deleted: true },
+      ]);
+
+      const result = await notificationResolver.Query.notifications(null, {}, ctx);
+
+      expect(ctx.prisma.user.findMany).toHaveBeenCalledTimes(1);
+      expect(ctx.prisma.user.findMany).toHaveBeenCalledWith({
+        where: { id: { in: [senderId, '60d5ec49ad414d7a8d5464a9'] } },
+        select: PUBLIC_USER_SELECT,
+      });
+      expect(ctx.prisma.post.findMany).toHaveBeenCalledTimes(1);
+      expect(ctx.prisma.post.findMany).toHaveBeenCalledWith({
+        where: { id: { in: [postId] } },
+        select: NOTIFICATION_POST_SELECT,
+      });
+      expect(result[0].userBy).toMatchObject({
+        _id: senderId,
+        username: 'bob',
+        name: 'Bob',
+        avatar: 'bob.png',
+        contributorBadge: true,
+        email: '',
+      });
+      expect(result[1].post).toEqual({ _id: postId, url: '/post/a/b/' + postId, deleted: true });
+      // An unknown sender and a notification with no post come back as null.
+      expect(result[2].userBy).toBeNull();
+      expect(result[2].post).toBeNull();
+    });
+  });
+
+  describe('Notification field resolvers', () => {
+    const base = {
+      _id: 'n1',
+      userId,
+      userIdBy: '60d5ec49ad414d7a8d5464a1',
+      postId: '60d5ec49ad414d7a8d5464a2',
+      status: 'new',
+      created: new Date(),
+    };
+
+    it('use the values the query already loaded', async () => {
+      const ctx = authedContext();
+      const sender = { _id: '60d5ec49ad414d7a8d5464a1', username: 'bob', email: '' };
+
+      await expect(
+        notificationResolver.Notification.userBy({ ...base, userBy: sender }, {}, ctx)
+      ).resolves.toBe(sender);
+      await expect(
+        notificationResolver.Notification.post({ ...base, post: null }, {}, ctx)
+      ).resolves.toBeNull();
+      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(ctx.prisma.post.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('load the sender and post for a notification from the live subscription', async () => {
+      const ctx = authedContext();
+      (ctx.prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: '60d5ec49ad414d7a8d5464a1',
+        username: 'bob',
+        name: 'Bob',
+      });
+      (ctx.prisma.post.findUnique as jest.Mock).mockResolvedValue({
+        id: '60d5ec49ad414d7a8d5464a2',
+        url: '/post/x',
+        deleted: false,
+      });
+
+      await expect(notificationResolver.Notification.userBy(base, {}, ctx)).resolves.toMatchObject({
+        _id: '60d5ec49ad414d7a8d5464a1',
+        username: 'bob',
+      });
+      await expect(notificationResolver.Notification.post(base, {}, ctx)).resolves.toEqual({
+        _id: '60d5ec49ad414d7a8d5464a2',
+        url: '/post/x',
+        deleted: false,
+      });
+      expect(ctx.prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: '60d5ec49ad414d7a8d5464a1' },
+        select: PUBLIC_USER_SELECT,
+      });
+      expect(ctx.prisma.post.findUnique).toHaveBeenCalledWith({
+        where: { id: '60d5ec49ad414d7a8d5464a2' },
+        select: NOTIFICATION_POST_SELECT,
+      });
+    });
+
+    it('return null without querying when there is no sender or post', async () => {
+      const ctx = authedContext();
+      const bare = { ...base, userIdBy: undefined, postId: undefined };
+
+      await expect(notificationResolver.Notification.userBy(bare, {}, ctx)).resolves.toBeNull();
+      await expect(notificationResolver.Notification.post(bare, {}, ctx)).resolves.toBeNull();
+      expect(ctx.prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(ctx.prisma.post.findUnique).not.toHaveBeenCalled();
     });
   });
 });
