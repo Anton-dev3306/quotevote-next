@@ -29,7 +29,15 @@ for (const name of report.resolvedGaps) {
   );
 }
 
-const failed = report.problems.length > 0 || report.resolvedGaps.length > 0;
+for (const name of report.missingGaps) {
+  console.error(
+    `${name} is no longer a frontend document. Remove it from KNOWN_CONTRACT_GAPS ` +
+      `(${KNOWN_CONTRACT_GAPS[name]}).`
+  );
+}
+
+const failed =
+  report.problems.length > 0 || report.resolvedGaps.length > 0 || report.missingGaps.length > 0;
 const issues = [...new Set(report.openGaps.map((name) => KNOWN_CONTRACT_GAPS[name]))]
   .sort()
   .join(', ');

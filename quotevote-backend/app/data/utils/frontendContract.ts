@@ -13,7 +13,8 @@ import type { ContractProblem, ContractReport, FrontendDocument } from '~/types/
 /**
  * Frontend documents that don't work against this backend yet, and the issue
  * that fixes each one. The check fails on any other document that doesn't
- * validate or has no resolver, and on an entry here that starts passing.
+ * validate or has no resolver, on an entry here that starts passing, and on an
+ * entry whose document no longer exists.
  */
 export const KNOWN_CONTRACT_GAPS: Readonly<Record<string, string>> = {
   // Group names (#539)
@@ -55,7 +56,6 @@ export const KNOWN_CONTRACT_GAPS: Readonly<Record<string, string>> = {
   ENABLE_USER: '#633',
   SEND_USER_INVITE: '#633',
   SEND_INVESTOR_EMAIL: '#633',
-  DELETE_NOTIFICATION: '#633',
 };
 
 const DOCUMENT_PATTERN = /export const (\w+) = gql`([\s\S]*?)`/g;
@@ -141,5 +141,8 @@ export function checkFrontendContract(
     }
   }
 
-  return { checked: documents.length, problems, resolvedGaps, openGaps };
+  const names = new Set(documents.map((document) => document.name));
+  const missingGaps = Object.keys(knownGaps).filter((name) => !names.has(name));
+
+  return { checked: documents.length, problems, resolvedGaps, openGaps, missingGaps };
 }

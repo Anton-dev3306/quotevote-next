@@ -22,4 +22,6 @@ export interface ContractReport {
   resolvedGaps: string[];
   /** Known gaps that still fail. */
   openGaps: string[];
+  /** Known gaps with no matching frontend document, so they should come off the list. */
+  missingGaps: string[];
 }

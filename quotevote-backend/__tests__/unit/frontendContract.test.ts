@@ -42,7 +42,13 @@ describe('checkFrontendContract', () => {
       {}
     );
 
-    expect(report).toEqual({ checked: 3, problems: [], resolvedGaps: [], openGaps: [] });
+    expect(report).toEqual({
+      checked: 3,
+      problems: [],
+      resolvedGaps: [],
+      openGaps: [],
+      missingGaps: [],
+    });
   });
 
   it('reports fields and arguments the schema does not have', () => {
@@ -103,6 +109,16 @@ describe('checkFrontendContract', () => {
 
     expect(report.resolvedGaps).toEqual(['ADD_POST']);
     expect(report.openGaps).toEqual([]);
+  });
+
+  it('flags a known gap whose document no longer exists', () => {
+    const report = checkFrontendContract(
+      schema,
+      [doc('ADD_POST', 'mutation { addPost(title: "a") { _id } }')],
+      { BLOCK_BUDDY: '#582' }
+    );
+
+    expect(report.missingGaps).toEqual(['BLOCK_BUDDY']);
   });
 
   it('ties every known gap to an issue', () => {
